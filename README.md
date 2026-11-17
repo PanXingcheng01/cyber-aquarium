@@ -147,25 +147,23 @@ _/(_^_)\_
 cyber-aquarium/
 ├── README.md
 ├── LICENSE
-├── cyber-aquarium/            # 程序本体（Electron 主进程 + 渲染层）
+├── 启动赛博鱼缸.vbs            # 唯一启动器：开发布局 / 发布包都能用
+├── 说明书.html                 # 图文说明书（生物图鉴风格，截图内嵌）
+├── 使用说明.txt                # 给玩的人的一页纸
+├── cyber-aquarium/            # 程序本体
 │   ├── package.json
-│   ├── main.js                # 窗口、透明/置顶、拖动、越界保护、位置持久化、菜单 IPC
+│   ├── main.js                # 窗口、透明置顶、拖动、越界保护、尺寸、存档、菜单 IPC
 │   ├── preload.js             # contextBridge 暴露 IPC
 │   └── renderer/
 │       ├── index.html
 │       ├── style.css          # 透明背景 + 辉光
 │       └── app.js             # ASCII 世界：鱼的 AI、螃蟹、水草、气泡、HUD、交互、菜单
-├── 启动赛博鱼缸.vbs            # 唯一启动器：开发布局 / 发布包 都能用
-├── 使用说明.txt                # 给玩的人的一页纸
-├── 说明书.html                 # 图文说明书（自带截图，可直接双击看）
-├── runtime/                   # Electron 运行时（285 MB，不进仓库）
-├── shots/                     # 截图（README 用，说明书里是内嵌的）
+├── shots/                     # 截图（README 用；说明书里是内嵌 base64）
 ├── tools/
-│   ├── 启动赛博鱼缸.vbs        # 开发用启动器（指向本机 Electron 运行时）
-│   ├── 启动赛博鱼缸-调试.cmd   # 同上，保留控制台看报错
-│   ├── 重新打包.cmd            # 生成 dist/CyberAquarium-portable.zip
-│   └── crab-sheet/            # 小工具：把几种螃蟹 ACI 画法渲染成对比图
-└── dist/                      # 打包产物（.gitignore 里，不进仓库）
+│   ├── 启动赛博鱼缸-调试.cmd   # 开发用，保留控制台看报错
+│   └── 重新打包.cmd            # 生成 dist/CyberAquarium-portable.zip
+├── runtime/                   # Electron 运行时（285 MB，.gitignore 排除）
+└── dist/                      # 打包产物（.gitignore 排除）
 ```
 
 ## 想改点什么
