@@ -6,7 +6,9 @@
 
 ## 两种用法
 
-**直接玩**：到 [Releases](../../releases) 下载 `CyberAquarium-portable.zip`，解压到**纯英文路径**（例如 `D:\CyberAquarium`），双击里面的 `赛博鱼缸.exe`。
+> 📦 包名带版本号：`CyberAquarium-v<版本>-portable.zip`，下载多个版本不会互相覆盖。
+
+**直接玩**：到 [Releases](../../releases) 下载 `CyberAquarium-v1.1.0-portable.zip`，解压到**纯英文路径**（例如 `D:\CyberAquarium`），双击里面的 `赛博鱼缸.exe`。
 （Electron 从含中文的路径启动会直接崩溃，所以路径必须英文；启动器会先检查并提示。）
 
 **改代码**：见下面的[开发环境](#开发环境)。
@@ -257,7 +259,7 @@ cyber-aquarium/
 ├── shots/                     # 截图（README 用；说明书里是内嵌 base64）
 ├── tools/
 │   ├── 启动赛博鱼缸-调试.cmd   # 开发用：保留控制台，能看到 Electron 的报错
-│   └── 重新打包.cmd            # 生成 dist/CyberAquarium-portable.zip
+│   └── 重新打包.cmd            # 生成 dist/CyberAquarium-v<版本>-portable.zip
 ├── runtime/                   # Electron 运行时（285 MB，.gitignore 排除）
 └── dist/                      # 打包产物（.gitignore 排除）
 ```

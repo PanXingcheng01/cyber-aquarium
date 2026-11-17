@@ -1,5 +1,5 @@
 @echo off
-rem Build the one downloadable artifact: dist\CyberAquarium-portable.zip
+rem Build the one downloadable artifact: dist\CyberAquarium-v<version>-portable.zip
 rem Then attach it to a GitHub Release (repo only carries source; runtime/ and dist/ are gitignored).
 rem ASCII only on purpose (cmd.exe doesn't read UTF-8); Chinese file names use wildcards.
 rem
@@ -54,10 +54,18 @@ copy /y "%ROOT%\赛博鱼缸.exe" "%PKG%\" >nul
 copy /y "%ROOT%\创建桌面快捷方式.vbs" "%PKG%\" >nul
 copy /y "%ROOT%\使用说明.txt" "%PKG%\" >nul
 copy /y "%ROOT%\*.html" "%PKG%\" >nul
-if exist "%DIST%\CyberAquarium-portable.zip" del /f /q "%DIST%\CyberAquarium-portable.zip"
+rem 版本号从 app 的 package.json 里读，让产物自带版本（zip 内部结构不变）
+set "VER="
+for /f "tokens=2 delims=:" %%v in ('findstr /c:"\"version\"" "%ROOT%\cyber-aquarium\package.json"') do set "VER=%%v"
+set "VER=%VER: =%"
+set "VER=%VER:"=%"
+set "VER=%VER:,=%"
+if "%VER%"=="" set "VER=0.0.0"
+set "OUT=%DIST%\CyberAquarium-v%VER%-portable.zip"
+if exist "%OUT%" del /f /q "%OUT%"
 
 echo [5/5] zip ...
-tar -a -c -f "%DIST%\CyberAquarium-portable.zip" -C "%DIST%" CyberAquarium
+tar -a -c -f "%OUT%" -C "%DIST%" CyberAquarium
 if errorlevel 1 (
   echo ZIP FAILED
   pause
@@ -66,6 +74,6 @@ if errorlevel 1 (
 rem 摊开的中间目录不留在磁盘上（只留 zip）
 rmdir /s /q "%PKG%"
 
-for %%F in ("%DIST%\CyberAquarium-portable.zip") do echo done: %%~zF bytes  ^-^>  %%~fF
+for %%F in ("%OUT%") do echo done: %%~zF bytes  ^-^>  %%~fF
 rem 从资源管理器双击时停下来让人看结果；带参数调用（脚本/CI）就不停
 if "%~1"=="" pause
