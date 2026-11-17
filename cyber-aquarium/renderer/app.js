@@ -1688,8 +1688,11 @@ function openMenuAt(px, py) {
   menuEl.hidden = false
   const w = menuEl.offsetWidth
   const h = menuEl.offsetHeight
-  const left = clamp(px, 6, Math.max(6, view.w - w - 6))
-  const top = clamp(py, 6, Math.max(6, view.h - h - 6))
+  // 菜单比窗口还高时（小尺寸）：贴到 0，剩下的靠菜单内部滚动
+  const maxLeft = Math.max(2, view.w - w - 4)
+  const maxTop = Math.max(2, view.h - h - 4)
+  const left = clamp(px, 2, maxLeft)
+  const top = clamp(py, 2, maxTop)
   menuEl.style.left = Math.round(left) + 'px'
   menuEl.style.top = Math.round(top) + 'px'
 }

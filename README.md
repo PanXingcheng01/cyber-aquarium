@@ -93,6 +93,7 @@ tools\重新打包.cmd
 - **深色模式**：在画布下面铺一层纯色底（`body.dark { background-color: #061417 }`），画布保持透明，所以辉光会透在底色上；缸内内容一个像素都不改
 - **换一缸清水 / 换一缸水草**：都在 `runAction()` 里。`clear` 只 `model.pellets.length = 0`；`scape` 调 `seedPlants()` 重新生成 9 株（位置/高低/形态/色调全随机），顺手也清鱼食
 - **总在最前**：勾选状态实时生效，走 `window.aq.setTop()`
+- **小尺寸也能用**：菜单比窗口高时，`@media (max-height:330px)` 把行高收到 17px；万一还高就靠 `#menu{max-height:calc(100vh - 8px);overflow-y:auto}` 内部滚动。打开位置用 `Math.max(2, …)` 夹取，不会出现负坐标把底部切掉
 - **使用说明**：`shell.openPath()` 打开程序目录上一级的 `说明书.html`（开发布局在项目根，发布包里和 exe 同级）；走 `aq:manual` IPC，preload 暴露 `openManual()`
 ## 鱼的性格
 

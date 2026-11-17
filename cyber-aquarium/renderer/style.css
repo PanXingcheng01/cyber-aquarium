@@ -172,3 +172,36 @@ body.dark {
   background: transparent;
   color: inherit;
 }
+/* 小尺寸窗口里菜单可能比鱼缸还高：允许内部滚动，并收紧行高 */
+#menu {
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#menu::-webkit-scrollbar {
+  width: 5px;
+}
+
+#menu::-webkit-scrollbar-thumb {
+  background: rgba(110, 249, 255, 0.28);
+  border-radius: 3px;
+}
+
+@media (max-height: 330px) {
+  #menu {
+    font-size: 10px;
+  }
+  #menu button {
+    height: 17px;
+  }
+  #menu hr {
+    margin: 2px 6px;
+  }
+  #menu .menu-row {
+    padding: 1px 6px 2px;
+  }
+  #menu button.dot {
+    height: 16px;
+  }
+}
