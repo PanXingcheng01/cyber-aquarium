@@ -638,6 +638,34 @@ async function runCapture(target) {
         window.__aq.stepSim(2)
         const starveBang = M.fish.some((x) => x.emote === '!')
 
+        // ---- 换水 / 换草都会：全叫醒 + 洗牌 ----
+        M.fish[0].mode = 'sleep'
+        M.fish[0].sleepY = M.fish[0].y
+        M.crab.mode = 'sleep'
+        const crabX0 = M.crab.x
+        M.fish[1].mode = 'sleep'
+        window.__aq.runAction('clear')
+        const clearAwake = M.fish.every((x) => x.mode !== 'sleep') && M.crab.mode !== 'sleep'
+        window.__aq.runAction('scape')
+        const scapeStill = M.plants.every((pl) => !(pl.waveLife > 0)) // 换草不再抖
+        const allAwake = M.fish.every((x) => x.mode !== 'sleep')
+        const excited = M.fish.every((x) => x.exciteT > 0) && M.freshT > 0
+        const crabMoved = M.crab.mode !== 'sleep' && Math.abs(M.crab.x - crabX0) > 0.5
+        const fishExcite = M.fish.every((x) => x.exciteT > 0 && x.exciteMax >= 4)
+        const crabExcite = M.crab.mode === 'wander' && M.crab.modeT > 0 && M.crab.exciteT <= 0
+        // ---- 换水 / 换一缸水草 ----
+        M.pellets.length = 0
+        M.bubbles.length = 0
+        for (let i = 0; i < 5; i++) window.__aq.model.pellets.push({ x: 10 + i, y: 8, vy: 0, age: 0, settled: true })
+        for (let i = 0; i < 8; i++) M.bubbles.push({ x: 12 + i, y: 10, v: 1.5, ph: 0 })
+        window.__aq.runAction('clear')
+        // 洗牌时每条鱼会吐一个气泡，所以只要求气泡数不超过鱼数
+        const clearWater = M.pellets.length === 0 && M.bubbles.length <= M.fish.length && M.surfaceKick > 0 && M.freshT > 0
+        window.__aq.runAction('scape')
+        const pearlsQueued = M.pearlT > 0 && M.pellets.length === 0
+        M.bubbles.length = 0
+        window.__aq.stepSim(30) // 2 秒，应该已经冒了珍珠泡
+        const pearlsVisible = M.bubbles.length > 0
         // ---- 食欲：饱着不吃、饿着全来 ----
         M.satiety = 100
         const fullIgnores = M.fish.every((x) => !window.__aq.willEat(x, 99991))
@@ -664,12 +692,30 @@ async function runCapture(target) {
         M.hearts.length = 0
         const pets0 = M.stats.pets
         const pf = M.fish[1] || M.fish[0]
+        // 复位：别的鱼赶走、换水状态清掉，免得干扰"停住就摸到"
+        M.freshT = 0
+        M.pearlT = 0
+        M.pet.fish = null
+        M.pet.time = 0
+        M.pet.cool = 0
+        M.fish.forEach((x, i) => {
+          x.bumpT = 0
+          x.bumpCool = 0
+          if (x === pf) return
+          x.x = 3 + i * 4
+          x.y = 3
+          x.mode = 'cruise'
+          x.modeT = 30
+          x.scare = 0
+        })
         pf.x = 30
         pf.y = 9
         pf.mode = 'cruise'
         pf.modeT = 30
         pf.scare = 0
         pf.petCool = 0
+        pf.petHeart = 0
+        pf.petT = 0
         M.cursor.x = Math.round(pf.x + pf.body.length / 2)
         M.cursor.y = Math.round(pf.y)
         M.cursor.inside = true
@@ -729,7 +775,24 @@ async function runCapture(target) {
         const clickWakesSleeping = sf.scare > 0
         M.satiety = 80
 
-        return JSON.stringify({ afterClick, feeds: M.stats.feeds, dragStarts, dragEnds: M.stats.dragEnds, menuAfterRightClick, menuItems, menuAfterSecondRightClick, hasClown, clownKept, shyFled, stillApproached, stillDbg: { d0: +d0.toFixed(2), d1: +d1.toFixed(2) }, calmFollowed, mouthOk, ateSettled, themeOk, scares, scared, fedOnFish, crabPinched, crabIgnoredFood, crabStillOnSand, crabChased, crabFled, clownBackedOff, clownCameBack, crabSleptCrouched, crabSleptNoFeet, crabSleptClaws, crabYielded, hungryGrey, starveBang, fullIgnores, ravenousAll, ateWhenStarved, digestRest, revivedColor, petHearts, noHeartsStarving, noHeartsSleeping, clickWakesSleeping, fish: M.fish.length })
+        // 兴奋前/后的平均游速（格/秒），不是断言，是给人看的数据
+        // 量"路径长度"而不是净位移：鱼来回游净位移会互相抵消
+        const measureSpeed = (sec) => {
+          let sum = 0
+          const frames = Math.round(sec * 15)
+          for (let n = 0; n < frames; n++) {
+            const s0 = M.fish.map((f) => ({ x: f.x, y: f.y }))
+            window.__aq.stepSim(1)
+            M.fish.forEach((f, i) => { sum += Math.hypot(f.x - s0[i].x, f.y - s0[i].y) })
+          }
+          return +(sum / M.fish.length / sec).toFixed(2)
+        }
+        M.fish.forEach((x) => { x.exciteT = 0 })
+        M.freshT = 0
+        const speedNormal = measureSpeed(2)
+        window.__aq.runAction('scape')
+        const speedExcited = measureSpeed(2)
+        return JSON.stringify({ speedNormal, speedExcited, afterClick, feeds: M.stats.feeds, dragStarts, dragEnds: M.stats.dragEnds, menuAfterRightClick, menuItems, menuAfterSecondRightClick, hasClown, clownKept, shyFled, stillApproached, stillDbg: { d0: +d0.toFixed(2), d1: +d1.toFixed(2) }, calmFollowed, mouthOk, ateSettled, themeOk, scares, scared, fedOnFish, crabPinched, crabIgnoredFood, crabStillOnSand, crabChased, crabFled, clownBackedOff, clownCameBack, crabSleptCrouched, crabSleptNoFeet, crabSleptClaws, crabYielded, hungryGrey, clearAwake, scapeStill, allAwake, excited, crabMoved, fishExcite, crabExcite, clearWater, pearlsQueued, pearlsVisible, starveBang, fullIgnores, ravenousAll, ateWhenStarved, digestRest, revivedColor, petHearts, noHeartsStarving, noHeartsSleeping, clickWakesSleeping, fish: M.fish.length })
       } catch (e) { return JSON.stringify({ selftestError: String(e && (e.stack || e.message)) }) } })()`)
       console.log('selftest ' + res)
     }
@@ -774,6 +837,16 @@ async function runCapture(target) {
         return true
       })()`)
       await wait(500)
+    }
+    if (process.argv.includes('--rescape')) {
+      // 截图用：触发「换一缸水草」，等珍珠泡冒出来
+      await win.webContents.executeJavaScript(`window.__aq.runAction('scape') || true`)
+      await wait(2400)
+    }
+    if (process.argv.includes('--water')) {
+      // 截图用：触发「换一缸清水」，看水面被搅动
+      await win.webContents.executeJavaScript(`window.__aq.runAction('clear') || true`)
+      await wait(260)
     }
     if (process.argv.includes('--crabclear')) {
       // 截图用：鱼全赶走、螃蟹摆到中间站好

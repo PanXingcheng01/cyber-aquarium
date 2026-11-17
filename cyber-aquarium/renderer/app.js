@@ -163,10 +163,16 @@ const model = {
   sandPuffs: [],
   hearts: [],
   pet: { fish: null, time: 0, cool: 0 },
+  sandSeed: 1, // 沙面纹理种子（启动和换草时重新抽）
+  surfaceCenter: COLS / 2, // 水面波纹的中心（倒水点）
+  pearlT: 0, // 水草冒珍珠泡的剩余时间
+  pearlAcc: 0,
+  surfaceKick: 0, // 水面被搅动的剩余时间
+  freshT: 0, // 刚换过水：鱼会兴奋一小会儿
   cursor: { x: -1, y: -1, inside: false, stamp: 0 },
   t: 0,
   menuOpen: false,
-  crab: { x: 24, y: CRAB.y, dir: 1, mode: 'wander', modeT: 2.5, pinch: 0, pinchFrom: 0, walk: 0, speed: 0, stride: 0, puffs: 1, dodgeDir: 0 },
+  crab: { x: 24, y: CRAB.y, dir: 1, mode: 'wander', modeT: 2.5, pinch: 0, pinchFrom: 0, walk: 0, speed: 0, stride: 0, puffs: 1, dodgeDir: 0, exciteT: 0 },
   stats: { dragStarts: 0, dragEnds: 0, feeds: 0, scares: 0, paints: 0, pinches: 0, yields: 0, pets: 0 },
 }
 
@@ -249,6 +255,15 @@ function makeFish(spec) {
     emoteLife: 0,
     petT: 0,
     petHeart: 0,
+    exciteT: 0, // 兴奋剩余时间
+    exciteMax: 4.5,
+    falling: false, // 正在往下砸（刚被倒进水里）
+    dropY: 0,
+    dropVy: 8,
+    scatterDir: 1, // 落水后往哪边散
+    scatterX: null, // 这条鱼落水后要冲去的横向位置
+    scatterY: null,
+    outT: 0, // 落地后朝外走的剩余时间
     bite: rand(-1.2, 1.2),
     bumpT: 0,
     bumpDir: 0,
@@ -495,6 +510,10 @@ function step(dt) {
   // 饱食度衰减：满 100 点大约撑 5 小时
   model.satiety = clamp(model.satiety - dt * (100 / (5 * 3600)), 0, 100)
 
+  model.pearlT = Math.max(0, model.pearlT - dt)
+  model.surfaceKick = Math.max(0, model.surfaceKick - dt)
+  model.freshT = Math.max(0, model.freshT - dt)
+
   stepPellets(dt)
   stepPetting(dt)
   stepBumps(dt)
@@ -504,6 +523,7 @@ function step(dt) {
   stepSandPuffs(dt)
   stepBubbles(dt)
   stepDust(dt)
+  stepPearls(dt)
   stepPlants(dt)
 }
 
@@ -528,8 +548,23 @@ function stepFish(f, dt) {
   f.think -= dt
   f.modeT -= dt
   f.petCool = Math.max(0, (f.petCool || 0) - dt)
+  if (f.exciteT > 0) f.exciteT -= dt
   if (f.emoteLife > 0) f.emoteLife -= dt
   const cx = f.x + f.body.length / 2
+
+  // 刚被倒进水里：直着往下砸，撞到落点后开始散
+  if (f.falling) {
+    f.y += f.dropVy * dt
+    f.x += f.scatterDir * f.base * 0.6 * dt
+    f.dir = f.scatterDir
+    clampFish(f)
+    if (f.y >= f.dropY) {
+      f.falling = false
+      f.outT = 2.2 // 落地后朝自己的落点冲一段（够冲到缸的两头）
+      spawnBubble(fishMouth(f), f.y - 0.2)
+    }
+    return
+  }
 
   // 被撞了一下：慢慢换个深度错开，速度也慢下来（不闪白、不窜）
   if (f.bumpT > 0) {
@@ -601,8 +636,11 @@ function stepFish(f, dt) {
   if (stepCursorPull(f, dt)) return
 
   // 状态切换：闲游 / 发呆 / 加速 / 睡觉
+  if (f.modeT <= 0 && f.exciteT > 0) f.modeT = 0
   if (f.modeT <= 0) {
-    f.mode = pickMode()
+    // 兴奋期只挑"游"和"窜"，不会发呆也不会睡着
+    const pBurst = f.exciteT > 0 ? (f.exciteMax - f.exciteT < EXCITE_HOT ? 0.55 : 0.35) : 0
+    f.mode = f.exciteT > 0 ? (Math.random() < pBurst ? 'burst' : 'cruise') : pickMode()
     const def = FISH_MODES.find((m) => m.mode === f.mode)
     f.modeT = rand(def.min, def.max)
     if (f.mode === 'sleep') {
@@ -636,13 +674,35 @@ function stepFish(f, dt) {
     return
   }
 
+  // 落地后这一小段：朝自己的落点冲过去，速度也快，保证真的散开
+  if (f.outT > 0) {
+    f.outT -= dt
+    const goal = f.scatterX == null ? f.x : f.scatterX
+    const gap = goal - (f.x + f.body.length / 2)
+    if (Math.abs(gap) > 2) f.dir = gap > 0 ? 1 : -1
+    f.x += f.dir * f.base * 3.2 * dt
+    if (f.scatterY != null) {
+      const dy = f.scatterY - f.y
+      if (Math.abs(dy) > 0.3) f.y += Math.sign(dy) * Math.min(Math.abs(dy), 2.2 * dt)
+    }
+    clampFish(f)
+    return
+  }
+
   // 闲游 / 加速
   if (f.think <= 0) {
     f.think = rand(2, 5)
     if (Math.random() < 0.4) f.dir *= -1
   }
-  const hungerK = HUNGER_SPEED[hungerTier()]
-  const speed = (f.mode === 'burst' ? f.base * 2.9 : f.base) * hungerK
+  const freshK = model.freshT > 0 ? 1.15 : 1 // 刚换过水，鱼会兴奋一会儿
+  const hungerK = HUNGER_SPEED[hungerTier()] * freshK
+  // 兴奋曲线：前 1.5 秒最闹（1.6×），之后 1.15× 慢慢回到 1.0×
+  let exciteK = 1
+  if (f.exciteT > 0) {
+    const age = f.exciteMax - f.exciteT
+    exciteK = age < EXCITE_HOT ? 1.6 : 1.15 - 0.15 * ((age - EXCITE_HOT) / (f.exciteMax - EXCITE_HOT))
+  }
+  const speed = (f.mode === 'burst' ? f.base * 2.9 : f.base) * hungerK * exciteK
   f.x += f.dir * speed * dt
   const minX = 1.25
   const maxX = COLS - 2 - f.body.length
@@ -810,8 +870,105 @@ function stepDust(dt) {
   }
 }
 
+/**
+ * 水草被水流冲一下：整缸草朝同一侧倒过去，再阻尼摆回来。
+ * 不是一次性加个偏移就完事 —— 那样 0.3 秒就被平滑抹平了，看不出来。
+ */
+const EXCITE_TIME = 4.5 // 倒水后的兴奋总时长
+const EXCITE_HOT = 1.5 // 前 1.5 秒最闹
+
+/**
+ * 换水 / 换草共用：把整缸鱼从水面某处"倒"下来。
+ * 落点每次随机（不总在中间），鱼贴水面挤成一团往下砸，
+ * 落地后先朝远离落点的方向窜一小段，再散开。
+ */
+function pourAll() {
+  const cx = rand(14, COLS - 14)
+  const n = model.fish.length
+  // 每条鱼分一个均匀铺开的落点（打乱顺序），落水后各自冲过去 —— 不然会挤成一条竖线
+  const slots = []
+  for (let i = 0; i < n; i++) slots.push(4 + (i + 0.5) * ((COLS - 8) / n))
+  for (let i = slots.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0
+    const tmp = slots[i]
+    slots[i] = slots[j]
+    slots[j] = tmp
+  }
+  model.fish.forEach((f, i) => {
+    const off = rand(-4, 4)
+    f.x = clamp(cx + off, 1.5, COLS - 3 - f.body.length)
+    f.y = WATER_TOP + rand(0.2, 1.2)
+    f.dropY = rand(5, 16)
+    // 越小的鱼阻力越大，沉得越慢：3 格的身子只有 7 格鱼的一半多
+    const sizeK = clamp(0.55 + (f.body.length - 3) * 0.13, 0.5, 1.15)
+    f.dropVy = rand(6, 8.6) * sizeK
+    f.falling = true
+    f.scatterX = slots[i]
+    f.scatterY = rand(WATER_TOP + 2.5, WATER_BOTTOM - 2)
+    f.scatterDir = slots[i] >= f.x ? 1 : -1
+    f.dir = f.scatterDir
+    f.mode = 'cruise'
+    f.modeT = rand(0.8, 1.6)
+    f.outT = 0
+    f.exciteT = EXCITE_TIME
+    f.exciteMax = EXCITE_TIME
+    f.scare = 0
+    f.petT = 0
+    f.petCool = 1.5
+    f.bumpT = 0
+    f.bumpCool = 0
+    f.fullT = 0
+    f.think = rand(0.2, 0.8)
+    f.sleepY = null
+  })
+  // 水面：从落点往两边荡开
+  model.surfaceKick = 2
+  model.surfaceCenter = cx
+  model.freshT = Math.max(model.freshT, 9)
+  // 螃蟹：直接被扔到沙面另一处，自己左右走几步就好，不算兴奋
+  const crab = model.crab
+  crab.x = rand(2.5, CRAB.maxX - 1)
+  crab.mode = 'wander'
+  crab.modeT = rand(2, 3)
+  crab.pinch = 0
+  crab.exciteT = 0
+  crab.dir = Math.random() < 0.5 ? -1 : 1
+}
+function stirWater(power = 1) {
+  const dir = Math.random() < 0.5 ? -1 : 1
+  for (const pl of model.plants) {
+    pl.waveAmp = dir * rand(3.6, 5.2) * power
+    pl.waveT = 0
+    pl.waveLife = rand(1.0, 1.35)
+    pl.push = pl.waveAmp * 0.6
+  }
+}
+
+/** 换水后水草冒珍珠泡（光合作用那种，从叶尖往上冒，比鱼的气泡慢） */
+function stepPearls(dt) {
+  if (model.pearlT <= 0 || !model.plants.length) return
+  model.pearlAcc -= dt
+  if (model.pearlAcc > 0) return
+  model.pearlAcc = rand(0.16, 0.36)
+  const pl = pick(model.plants)
+  spawnBubble(pl.x + rand(-0.5, 0.5), SEABED_ROW - 1 - pl.h * rand(0.55, 1), 0.5)
+}
+
 function stepPlants(dt) {
   for (const pl of model.plants) {
+    // 换水引起的水流摆动：正弦 + 线性衰减，来回荡两下再停
+    if (pl.waveLife > 0) {
+      pl.waveT += dt
+      const k = 1 - pl.waveT / pl.waveLife
+      if (k <= 0) {
+        pl.waveLife = 0
+        pl.waveAmp = 0
+        pl.push = 0
+      } else {
+        pl.push = pl.waveAmp * Math.sin(pl.waveT * 6.2) * k
+      }
+      continue
+    }
     let target = 0
     for (const f of model.fish) {
       if (f.mode === 'sleep' || f.mode === 'idle') continue
@@ -853,6 +1010,10 @@ function teasingCrab() {
 function pickCrabMode(cx) {
   const near = model.cursor.inside && Math.abs(model.cursor.x - cx) <= 12
   const r = Math.random()
+  // 刚被搅过底：兴奋期不许睡
+  if (model.crab.exciteT > 0) {
+    return near ? { mode: 'chase', modeT: rand(1.0, 2.0) } : { mode: 'wander', modeT: rand(2, 4) }
+  }
   if (r < 0.32) return { mode: 'sleep', modeT: rand(7, 16) }
   if (r < 0.76) return { mode: 'wander', modeT: rand(5, 11) }
   if (near && r < 0.91) return { mode: 'chase', modeT: rand(1.2, 2.4) }
@@ -883,6 +1044,7 @@ function stepCrab(dt) {
   const crab = model.crab
   const cx = crab.x + CRAB.w / 2
   crab.modeT -= dt
+  if (crab.exciteT > 0) crab.exciteT = Math.max(0, crab.exciteT - dt)
   if (crab.pinch > 0) crab.pinch = Math.max(0, crab.pinch - dt)
 
   if (crab.modeT <= 0) {
@@ -908,7 +1070,9 @@ function stepCrab(dt) {
   } else {
     // 溜达：晃两下、站一会儿 —— 有明确的"停住"时段，不然原地一直在抖
     const sway = Math.sin(model.t * 0.75 + crab.x * 0.4)
-    vx = Math.abs(sway) < 0.6 ? 0 : Math.sign(sway) * 0.75
+    // 兴奋时溜达也快一些，看得出它在忙
+    const wanderSpeed = crab.exciteT > 0 ? 1.25 : 0.75
+    vx = Math.abs(sway) < 0.6 && crab.exciteT <= 0 ? 0 : Math.sign(sway) * wanderSpeed
   }
 
   if (vx !== 0) {
@@ -1119,7 +1283,11 @@ function drawSurface() {
     const jitter = Math.sin(c * 12.9898 + 78.233) * 43758.5453
     const j = jitter - Math.floor(jitter)
     const base = Math.sin(p * 0.52) + Math.sin(p * 1.63 + 1.2) * 0.55 + Math.sin(p * 0.27 + 4.1) * 0.85
-    const n = base + (j - 0.5) * 0.9
+    // 倒水激起的波纹：从落点往两边衰减（6 格左右），2 秒内平息
+    const kick = model.surfaceKick
+    const dx = c - (model.surfaceCenter || COLS / 2)
+    const env = kick > 0 ? kick * Math.exp(-(dx * dx) / 36) : 0
+    const n = base + (j - 0.5) * 0.9 * (1 + env * 1.1) + Math.sin(model.t * 9 + c * 1.3) * env * 0.6
 
     if (n > 0.6) put(c, SURFACE_ROW, SURF_GLYPHS[c % SURF_GLYPHS.length], '#2a8f8a')
     else if (n > 0.2) put(c, SURFACE_ROW, SURF_GLYPHS[(c * 5 + 1) % SURF_GLYPHS.length], '#1c5f63')
@@ -1143,7 +1311,7 @@ function drawPlants() {
     for (let k = 0; k < pl.h; k++) {
       const t = (k + 1) / pl.h
       const wave = Math.sin(model.t * pl.rate + pl.phase - k * 0.3) * pl.amp * t
-      const off = Math.round(wave + pl.push * Math.pow(t, 1.5))
+      const off = Math.round(wave + pl.push * Math.pow(t, 1.15))
       const r = SEABED_ROW - 1 - k
       const idx = off > 0 ? 2 : off < 0 ? 1 : 0
       let ch = k === 0 ? '|' : idx === 0 ? '|' : idx === 2 ? ')' : '('
@@ -1357,10 +1525,14 @@ function drawSand() {
   const baseY = layout.pad + 19 * layout.cellH
   const bottom = layout.pad + HUD_ROW * layout.cellH
 
+  // 沙脊形状 + 石子位置都由 sandSeed 决定：换草会重新抽，换水不动
+  const seed = model.sandSeed || 1
+  const ph1 = (seed % 97) * 0.13
+  const ph2 = (seed % 53) * 0.21
   const pts = []
   for (let x = x0; x <= x1; x += 2) {
     const t = (x - x0) / (x1 - x0)
-    const y = baseY + Math.sin(t * 11 + 1.3) * layout.cellH * 0.22 + Math.sin(t * 27) * layout.cellH * 0.1
+    const y = baseY + Math.sin(t * 11 + 1.3 + ph1) * layout.cellH * 0.22 + Math.sin(t * 27 + ph2) * layout.cellH * 0.1
     pts.push([x, y])
   }
 
@@ -1379,13 +1551,13 @@ function drawSand() {
   ctx.fill()
 
   // 沙里嵌的几颗石子
-  const pebbles = [
-    [0.18, 0.62],
-    [0.33, 0.82],
-    [0.52, 0.55],
-    [0.71, 0.78],
-    [0.86, 0.5],
-  ]
+  const fr = (v) => v - Math.floor(v)
+  const pebbles = []
+  for (let i = 0; i < 5; i++) {
+    const r1 = fr(Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453)
+    const r2 = fr(Math.sin(seed * 39.3467 + i * 11.135) * 24634.6345)
+    pebbles.push([0.12 + r1 * 0.78, 0.48 + r2 * 0.42])
+  }
   ctx.fillStyle = 'rgba(16, 78, 74, 0.32)'
   for (const [tx, ty] of pebbles) {
     ctx.beginPath()
@@ -1725,14 +1897,24 @@ function runAction(act) {
     }
     save()
   } else if (act === 'clear') {
-    // 换水：只把水里漂的鱼食清掉，水草一根不动
+    // 换一缸清水：清空 → 生物全被捞出来又放回去（换位、短暂兴奋）→ 水草被水流冲一下 → 水面抖
     model.pellets.length = 0
-    for (let i = 0; i < 6; i++) spawnBubble(rand(3, COLS - 4), rand(WATER_TOP + 2, SEABED_ROW - 1))
+    model.bubbles.length = 0
+    pourAll()
+    stirWater(1)
+    // 波纹和落点由 pourAll() 一起设置
+    model.freshT = 8
   } else if (act === 'scape') {
-    // 换一缸水草：重新长一遍（位置/高低/形态/色调全换），顺手把剩的鱼食清掉
+    // 换一缸水草：动土换景。草插定后不再抖；鱼和螃蟹同样被打散换位
     model.pellets.length = 0
+    model.bubbles.length = 0
     seedPlants()
-    for (let i = 0; i < 10; i++) spawnBubble(rand(3, COLS - 4), rand(WATER_TOP + 3, SEABED_ROW - 2))
+    model.sandSeed = rand(1, 999)
+    pourAll()
+    model.pearlT = rand(6, 10)
+    model.pearlAcc = 0
+    // 波纹和落点由 pourAll() 一起设置
+    model.freshT = 8
   } else if (act === 'top') {
     model.alwaysOnTop = !model.alwaysOnTop
     window.aq.setTop(model.alwaysOnTop)
@@ -1911,6 +2093,7 @@ async function init() {
   addFish(true) // 保底一条小丑鱼
   while (model.fish.length < wantFish) addFish()
 
+  model.sandSeed = rand(1, 999)
   seedDust()
   seedPlants()
   // 螃蟹每次开机换个落脚点，别老在同一个位置
@@ -1953,6 +2136,7 @@ async function init() {
     fishColor: (i) => fishCharColor(model.fish[i], 0, model.fish[i].body.length),
     hearts: () => model.hearts.length,
     willEat: (f, id) => wantsPellet(f, { id }),
+    runAction: (act) => runAction(act),
     hungerTier: () => hungerTier(),
     repaint: () => paint(),
     closeMenu,

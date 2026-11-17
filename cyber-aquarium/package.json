@@ -1,6 +1,6 @@
 {
   "name": "cyber-aquarium",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "ASCII cyber aquarium desktop pet",
   "main": "main.js"

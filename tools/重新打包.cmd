@@ -96,9 +96,11 @@ if errorlevel 1 (
 rem 摊开的中间目录不留在磁盘上（只留 zip）
 rmdir /s /q "%PKG%"
 
-rem 本地留一份历史版本，免得每次都要去 Release 下载
-if not exist "%DIST%\历史版本" mkdir "%DIST%\历史版本"
-copy /y "%OUT%" "%DIST%\历史版本\" >nul
+rem 本地存档：dist 只留当前版本，其它版本全部挪进 dist\history
+rem （history 里每一份 = GitHub 上某个已发布的版本，别在这里重打旧版本）
+if not exist "%DIST%\history" mkdir "%DIST%\history"
+move /y "%DIST%\CyberAquarium-v*-portable.zip" "%DIST%\history\" >nul 2>nul
+move /y "%DIST%\history\CyberAquarium-v%VER%-portable.zip" "%DIST%\" >nul 2>nul
 
 for %%F in ("%OUT%") do echo done: %%~zF bytes  ^-^>  %%~fF
 rem 从资源管理器双击时停下来看结果；带参数调用（脚本/CI）就不停
