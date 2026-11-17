@@ -6,7 +6,7 @@
 
 ## 两种用法
 
-**直接玩**：到 [Releases](../../releases) 下载 `CyberAquarium-portable.zip`，解压到**纯英文路径**（例如 `D:\CyberAquarium`），双击里面的 `启动赛博鱼缸.vbs`。
+**直接玩**：到 [Releases](../../releases) 下载 `CyberAquarium-portable.zip`，解压到**纯英文路径**（例如 `D:\CyberAquarium`），双击里面的 `赛博鱼缸.exe`。
 （Electron 从含中文的路径启动会直接崩溃，所以路径必须英文；启动器会先检查并提示。）
 
 **改代码**：见下面的[开发环境](#开发环境)。
@@ -25,7 +25,7 @@ cd cyber-aquarium
 1. 下载 Electron 45.x win32-x64，解压到项目里的 `runtime\`（能看见 `runtime\electron.exe` 就对了）
    - 这目录 285 MB，`.gitignore` 里已经排除，不会进仓库
 2. 不想放在项目里，就设环境变量 `AQ_RUNTIME` 指向别处的 runtime 目录（必须是纯英文路径）
-3. 双击项目根目录的 `启动赛博鱼缸.vbs`；要看报错就用 `tools\启动赛博鱼缸-调试.cmd`
+3. 双击项目根目录的 `赛博鱼缸.exe`；要看报错就用 `tools\启动赛博鱼缸-调试.cmd`
 
 跑自检（合成事件跑一遍交互回归）：
 
@@ -147,7 +147,7 @@ _/(_^_)\_
 cyber-aquarium/
 ├── README.md
 ├── LICENSE
-├── 启动赛博鱼缸.vbs            # 唯一启动器：开发布局 / 发布包都能用
+├── 赛博鱼缸.exe                # 启动器（内嵌图标，双击即用）
 ├── 说明书.html                 # 图文说明书（生物图鉴风格，截图内嵌）
 ├── 使用说明.txt                # 给玩的人的一页纸
 ├── cyber-aquarium/            # 程序本体
@@ -161,7 +161,7 @@ cyber-aquarium/
 ├── assets/aquarium.ico        # 图标（桌面快捷方式用）
 ├── shots/                     # 截图（README 用；说明书里是内嵌 base64）
 ├── tools/
-│   ├── 启动赛博鱼缸-调试.cmd   # 开发用，保留控制台看报错
+│   ├── 启动赛博鱼缸-调试.cmd   # 开发用：保留控制台，能看到 Electron 的报错
 │   └── 重新打包.cmd            # 生成 dist/CyberAquarium-portable.zip
 ├── runtime/                   # Electron 运行时（285 MB，.gitignore 排除）
 └── dist/                      # 打包产物（.gitignore 排除）
@@ -181,7 +181,7 @@ cyber-aquarium/
 
 ## 开机自启
 
-`Win+R` → 输入 `shell:startup` → 回车 → 把 `tools/启动赛博鱼缸.vbs` 的**快捷方式**丢进去。
+`Win+R` → 输入 `shell:startup` → 回车 → 把 `赛博鱼缸.exe` 的**快捷方式**丢进去。
 
 ## 已知限制
 

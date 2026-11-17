@@ -50,7 +50,6 @@ echo [3/5] app ...
 robocopy "%ROOT%\cyber-aquarium" "%PKG%\app" /E /PURGE /NFL /NDL /NJH /NJS /NP >nul
 
 echo [4/5] launcher + docs ...
-copy /y "%ROOT%\启动赛博鱼缸.vbs" "%PKG%\" >nul
 copy /y "%ROOT%\赛博鱼缸.exe" "%PKG%\" >nul
 copy /y "%ROOT%\创建桌面快捷方式.vbs" "%PKG%\" >nul
 copy /y "%ROOT%\使用说明.txt" "%PKG%\" >nul
