@@ -17,6 +17,11 @@ app.whenReady().then(async () => {
     backgroundColor: '#0a1a1e',
   })
   await win.loadFile(html)
+  const scrollArg = process.argv.find((a) => a.startsWith('--scroll='))
+  if (scrollArg) {
+    const y = Number(scrollArg.slice('--scroll='.length)) || 0
+    await win.webContents.executeJavaScript(`window.scrollTo(0, ${y}); true`)
+  }
   await new Promise((r) => setTimeout(r, 700))
   console.log('pageerr ' + (await win.webContents.executeJavaScript('window.__err || "missing"')))
   const img = await win.webContents.capturePage()
