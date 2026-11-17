@@ -429,16 +429,65 @@ cyber-aquarium/
 "runtime\electron.exe" "cyber-aquarium" --selftest --capture="shots\test.png"
 ```
 
-## 发版清单
+## 版本更新规则
 
-1. 改 `cyber-aquarium/package.json` 的 `version`（这是唯一版本源）
-2. 双击 `tools\重新打包.cmd` —— 产物 `dist\CyberAquarium-v<版本>-portable.zip`
-   - 启动器 `赛博鱼缸.exe` 会在这一步**重新编译**，文件属性里的版本号自动跟上
-   - 打包完自动把 `dist` 里其它旧版本挪进 `dist\history\`（当前版留在 `dist`）
-3. 把 zip 传到对应 Release（同名替换本版、新版本则新建 tag + Release）
-4. `dist\history\` 就当本地存档：**里面每一份 = GitHub 上某个已发布的同版本包**，别重打旧版本，否则字节会对不上
+### 版本号
 
-> 更新说明书/README 里的版本字样：`说明书.html` 页脚、README 顶部的下载文件名
+**唯一来源是 `cyber-aquarium/package.json` 里的 `version`**（语义化 `x.y.z`），改这一处，其它地方都跟着走：
+
+- zip 名：`dist\CyberAquarium-v<版本>-portable.zip`
+- `赛博鱼缸.exe` 的「文件版本 / 产品版本」（打包时重新编译写入，别手改 exe）
+- Release 的 tag 名：`v<版本>`
+
+改一次版本号，这三处自动一致。
+
+### 改动级别怎么定
+
+| 级别 | 什么时候用 | 例子 |
+| --- | --- | --- |
+| `z`（补丁） | 只调手感、修 bug、改文案 | 1.1.1 → 1.1.2 |
+| `y`（次版本） | 加了能感知的新功能 | 1.1.x → 1.2.0 |
+| `x`（大版本） | 整体重做 / 不兼容的改动 | 1.x → 2.0.0 |
+
+### 发布怎么处理
+
+| 变化 | Release 页面 | Release 说明 | 本地 `dist` |
+| --- | --- | --- | --- |
+| **只变 z** | **删掉旧页和 tag**，新建一页 | 新页里把**这条 y 线的全部 z 都列出来**（1.1.2 + 1.1.1 + 1.1.0），因为旧页要被删，不列就丢了 | `dist` 只留新包；被替换的旧包**删掉** |
+| **变 y** | 旧线页面**保留**，另开一页 | 新页**只写本版**，不搬旧线内容 | 旧线最后那版进 `history` |
+| **变 x** | 旧的大版本全部保留，另开一页 | 同上 | 同上 |
+
+> `v1.0.0` 是首个版本，永久保留（当历史锚点）。
+
+### Release 说明的格式
+
+```markdown
+桌面上的 ASCII 赛博鱼缸，<x.y> 系列。
+
+## <最新版本> · <一句话主题>
+- 改了 A
+- 改了 B
+
+## <同一条线里的旧版本> · <主题>     ← 只有"只变 z"时才需要往下接
+- ...
+
+**下载**：点下面 Assets 里的 `CyberAquarium-v<版本>-portable.zip`（约 130 MB，自带 Electron 运行时）。
+GitHub 会自动多挂两个 `Source code`，那是源码快照，不能直接玩。
+
+解压到**纯英文路径**，双击 `赛博鱼缸.exe`。第一次启动 SAT 只有 4%，记得先喂它。
+```
+
+### 发版操作顺序
+
+1. 改 `package.json` 的 `version`
+2. 同步文档里的版本字样：README 顶部的下载文件名、`说明书.html` 页脚
+3. 跑一遍自检（`runtime\electron.exe cyber-aquarium --selftest`），必须全绿
+4. 双击 `tools\重新打包.cmd` → 产物 `dist\CyberAquarium-v<版本>-portable.zip`
+   - 启动器 `赛博鱼缸.exe` 自动重编、版本号自动写入
+   - 打包完自动把 `dist` 里的旧版本挪进 `dist\history\`，当前版留在 `dist`
+5. 解压到纯英文路径实测一次，确认能启动
+6. 按上面的规则处理 GitHub：建/删 Release + tag，上传 zip，核对 `sha256` 与本地一致
+7. `dist\history\` 唯一作用是本地存档：**里面每一份都要等于 GitHub 上现存的某个版本包**，不要重打旧版本（重打会改 zip 时间戳、字节对不上）
 ## License
 
 代码以 MIT 发布（见 `LICENSE`）。运行时要单独准备，不随仓库分发；Electron / Chromium 的许可见它们自己的 `LICENSE`、`LICENSES.chromium.html`。
