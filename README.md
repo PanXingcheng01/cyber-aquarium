@@ -39,34 +39,6 @@ cd cyber-aquarium
 tools\重新打包.cmd
 ```
 
-## 发布到 GitHub
-
-仓库里**只放代码、文档、工具**；运行时和打包产物都不进 git：
-
-| 东西 | 去哪 | 为什么 |
-| --- | --- | --- |
-| `cyber-aquarium/`、`docs`、`shots`、`tools` | git 仓库 | 小文件，改了就提交 |
-| `runtime/`（285 MB） | 本地，`.gitignore` 排除 | `electron.exe` 单文件 238 MB，**超过 GitHub 100 MB 上限** |
-| `CyberAquarium-portable.zip`（130 MB） | **Releases 附件** | 二进制发布物，不跟源码混在一起 |
-
-发布流程：
-
-```cmd
-:: 1. 打发布包（会自己精简运行时、清理中间目录，只留一个 zip）
-tools\重新打包.cmd
-
-:: 2. 提交代码
-git add -A && git commit -m "..." && git push
-
-:: 3. 在 GitHub 网页上：Releases → Draft a new release → 填个 tag（如 v1.0.0）
-::    → 把 dist\CyberAquarium-portable.zip 拖到附件区 → Publish release
-```
-
-也可以命令行传（需要 `gh` CLI 登录过）：
-
-```cmd
-gh release create v1.0.0 "dist\CyberAquarium-portable.zip" --title "赛博鱼缸 1.0" --notes "绿色版，解压到纯英文路径双击启动"
-```
 ## 操作
 
 | 动作 | 效果 |

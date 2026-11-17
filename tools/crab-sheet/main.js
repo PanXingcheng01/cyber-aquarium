@@ -4,15 +4,19 @@ const fs = require('fs')
 const path = require('path')
 
 app.whenReady().then(async () => {
+  const htmlArg = process.argv.find((a) => a.startsWith('--html='))
+  const html = htmlArg ? path.resolve(htmlArg.slice('--html='.length)) : path.join(__dirname, 'index.html')
+  const sizeArg = process.argv.find((a) => a.startsWith('--size='))
+  const size = sizeArg ? sizeArg.slice('--size='.length).split('x').map(Number) : [960, 960]
   const win = new BrowserWindow({
-    width: 960,
-    height: 960,
+    width: size[0],
+    height: size[1],
     useContentSize: true,
     show: true,
     frame: false,
     backgroundColor: '#0a1a1e',
   })
-  await win.loadFile(path.join(__dirname, 'index.html'))
+  await win.loadFile(html)
   await new Promise((r) => setTimeout(r, 700))
   console.log('pageerr ' + (await win.webContents.executeJavaScript('window.__err || "missing"')))
   const img = await win.webContents.capturePage()

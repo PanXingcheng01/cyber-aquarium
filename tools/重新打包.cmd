@@ -1,5 +1,6 @@
 @echo off
 rem Build the one downloadable artifact: dist\CyberAquarium-portable.zip
+rem Then attach it to a GitHub Release (repo only carries source; runtime/ and dist/ are gitignored).
 rem ASCII only on purpose (cmd.exe doesn't read UTF-8); Chinese file names use wildcards.
 rem
 rem Layout of the zip:
