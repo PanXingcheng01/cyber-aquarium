@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>螃蟹样式备选</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0a1a1e;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="960" height="960"></canvas>
+    <script>
+      window.__err = 'none'
+      try {
+        const cv = document.getElementById('c')
+        const ctx = cv.getContext('2d')
+
+        const CO = { body: '#ff7a45', claw: '#ffb36b', leg: '#c2643c', eye: '#ffe9a8' }
+        const CLAW_CHARS = 'V><\\/^Y'
+
+        const VARIANTS = [
+          { name: 'A · 高钳（现在这版，钳子抬一格）', rows: ['V     V', ' (o,o) ', '  vvvv '] },
+          { name: 'B · 平钳（最紧凑，钳子贴着壳）', rows: ['V(o,o)V', ' vvvv '] },
+          { name: 'C · 前钳（两只钳子对着你）', rows: ['>(o,o)<', ' vvvv '] },
+          { name: 'D · 外钳（钳子朝外撇）', rows: ['<(o,o)>', ' vvvv '] },
+          { name: 'E · Y 形钳（钳口张开的两瓣）', rows: ['Y(o,o)Y', ' vvvv '] },
+          { name: 'F · 宽壳（两边各加一层括号）', rows: ['V((o,o))V', '  vvvv  '] },
+          { name: 'G · 触须（钳子上加两根眼柄）', rows: ['o     o', 'V     V', ' (o,o) ', '  vvvv '] },
+          { name: 'H · 双排腿（四只脚分成两对）', rows: ['V(o,o)V', ' vv vv '] },
+        ]
+
+        function fontFor(cellW) {
+          ctx.font = '100px Consolas, "Cascadia Mono", "Courier New", monospace'
+          const advance = Math.max(0.4, ctx.measureText('M').width / 100)
+          return `${(cellW / advance).toFixed(2)}px Consolas, "Cascadia Mono", "Courier New", monospace`
+        }
+
+        function colorOf(ch) {
+          if (ch === 'v') return CO.leg
+          if (ch === 'o' || ch === '*') return CO.eye
+          if (CLAW_CHARS.includes(ch)) return CO.claw
+          return CO.body
+        }
+
+        function drawSprite(rows, ox, oy, cellW, cellH) {
+          const w = Math.max(...rows.map((r) => r.length))
+          ctx.save()
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.font = fontFor(cellW)
+          for (let r = 0; r < rows.length; r++) {
+            const row = rows[r].padEnd(w, ' ')
+            for (let c = 0; c < row.length; c++) {
+              const ch = row[c]
+              if (ch === ' ') continue
+              const x = ox + c * cellW + cellW / 2
+              const y = oy + r * cellH + cellH / 2
+              const co = colorOf(ch)
+              ctx.globalAlpha = 0.9
+              ctx.shadowColor = co
+              ctx.shadowBlur = Math.max(3, cellW * 1.1)
+              ctx.fillStyle = co
+              ctx.fillText(ch, x, y)
+              ctx.shadowBlur = 0
+              ctx.globalAlpha = 1
+              ctx.fillText(ch, x, y)
+            }
+          }
+          ctx.restore()
+        }
+
+        const bg = ctx.createLinearGradient(0, 0, 0, cv.height)
+        bg.addColorStop(0, '#0d2226')
+        bg.addColorStop(1, '#061417')
+        ctx.fillStyle = bg
+        ctx.fillRect(0, 0, cv.width, cv.height)
+
+        ctx.fillStyle = '#d6fdff'
+        ctx.font = '700 20px Consolas, "Microsoft YaHei", monospace'
+        ctx.fillText('螃蟹样式备选', 24, 38)
+        ctx.fillStyle = '#7fb3b0'
+        ctx.font = '13px "Microsoft YaHei", sans-serif'
+        ctx.fillText('中间：放大看形状　　右边：实际大小（7×13 一格）。夹人时左右钳子换成 > 和 <。', 24, 62)
+        ctx.fillText('实际大小', 800, 62)
+
+        const blockH = 106
+        const top = 84
+        for (let i = 0; i < VARIANTS.length; i++) {
+          const v = VARIANTS[i]
+          const y = top + i * blockH
+          ctx.fillStyle = 'rgba(110,249,255,0.10)'
+          ctx.fillRect(24, y - 6, cv.width - 48, 1)
+          ctx.fillStyle = '#9ffcff'
+          ctx.font = '14px "Microsoft YaHei", monospace'
+          ctx.fillText(v.name, 24, y + 18)
+          drawSprite(v.rows, 380, y + 6, 12, 22)
+          drawSprite(v.rows, 800, y + 26, 7, 13)
+        }
+
+        ctx.fillStyle = '#7fb3b0'
+        ctx.font = '13px "Microsoft YaHei", sans-serif'
+        ctx.fillText('腿还是 vvvv；要是想要更"横"的感觉，也可以把腿换成 /\\/\\ 或 ╱╲。', 24, cv.height - 20)
+      } catch (e) {
+        window.__err = String(e && (e.stack || e.message))
+        const c2 = document.getElementById('c').getContext('2d')
+        c2.fillStyle = '#ff6b6b'
+        c2.font = '16px monospace'
+        c2.fillText('ERR: ' + window.__err, 20, 900)
+      }
+    </script>
+  </body>
+</html>

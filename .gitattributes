@@ -1,0 +1,12 @@
+# 统一行尾：代码文本走 auto，Windows 脚本强制 CRLF
+* text=auto
+
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 二进制 / 特殊编码：不要做任何转换
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
+*.vbs binary

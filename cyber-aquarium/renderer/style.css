@@ -1,0 +1,120 @@
+:root {
+  color-scheme: dark;
+  --cy: #6ef9ff;
+  --cy-dim: #1f8f8a;
+  --ink: #020609;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+}
+
+/* 深色外壳：在页面最底层铺一层底色（画布是它的子元素，本身保持透明，
+   鱼缸的辉光才透得出来）。颜色取自 说明书.html 背景的最深处 #061417 */
+body.dark {
+  background-color: #061417;
+}
+
+#tank {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 单层高斯：两层全画布 drop-shadow 会把帧率拖下来 */
+  filter: drop-shadow(0 0 3px rgba(110, 249, 255, 0.55));
+}
+
+#menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 152px;
+  padding: 4px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(6, 22, 26, 0.95), rgba(3, 12, 16, 0.95));
+  border: 1px solid rgba(110, 249, 255, 0.34);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.55),
+    0 0 18px rgba(40, 210, 255, 0.12),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(7px);
+  color: #c9fbf6;
+  font-size: 11px;
+  line-height: 1;
+  transform-origin: top left;
+  animation: aq-pop 0.105s ease-out;
+}
+
+#menu[hidden] {
+  display: none;
+}
+
+@keyframes aq-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+#menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  height: 21px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+
+#menu button:hover {
+  background: rgba(110, 249, 255, 0.14);
+  color: #eafffd;
+}
+
+#menu button .tick {
+  color: var(--cy);
+  opacity: 0;
+  font-size: 10px;
+}
+
+#menu button.is-on .tick {
+  opacity: 1;
+}
+
+#menu button.is-danger:hover {
+  background: rgba(255, 96, 110, 0.18);
+  color: #ffd7db;
+}
+
+#menu hr {
+  height: 1px;
+  margin: 4px 6px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, rgba(110, 249, 255, 0.28), transparent);
+}

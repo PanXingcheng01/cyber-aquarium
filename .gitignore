@@ -1,0 +1,16 @@
+# Electron 运行时（285 MB，GitHub 单文件上限 100 MB，不进仓库；发布版走 Release）
+runtime/
+
+# 打包产物（运行时 + zip），不进仓库
+dist/
+
+# 依赖
+node_modules/
+
+# 临时文件 / 截图自检输出
+*.log
+shots/test.png
+shots/tmp*.png
+Thumbs.db
+.DS_Store
+shots/crabs.png

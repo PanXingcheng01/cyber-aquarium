@@ -1,0 +1,7 @@
+{
+  "name": "cyber-aquarium",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ASCII cyber aquarium desktop pet",
+  "main": "main.js"
+}
