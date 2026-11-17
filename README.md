@@ -427,6 +427,16 @@ cyber-aquarium/
 "runtime\electron.exe" "cyber-aquarium" --selftest --capture="shots\test.png"
 ```
 
+## 发版清单
+
+1. 改 `cyber-aquarium/package.json` 的 `version`（这是唯一版本源）
+2. 双击 `tools\重新打包.cmd` —— 产物 `dist\CyberAquarium-v<版本>-portable.zip`
+   - 启动器 `赛博鱼缸.exe` 会在这一步**重新编译**，文件属性里的版本号自动跟上
+   - 打包完自动把 `dist` 里其它旧版本挪进 `dist\history\`（当前版留在 `dist`）
+3. 把 zip 传到对应 Release（同名替换本版、新版本则新建 tag + Release）
+4. `dist\history\` 就当本地存档：**里面每一份 = GitHub 上某个已发布的同版本包**，别重打旧版本，否则字节会对不上
+
+> 更新说明书/README 里的版本字样：`说明书.html` 页脚、README 顶部的下载文件名
 ## License
 
 代码以 MIT 发布（见 `LICENSE`）。运行时要单独准备，不随仓库分发；Electron / Chromium 的许可见它们自己的 `LICENSE`、`LICENSES.chromium.html`。
