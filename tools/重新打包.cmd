@@ -1,13 +1,14 @@
 @echo off
+rem 让 cmd 按 UTF-8 解析本脚本里的中文文件名/目录名
+chcp 65001 >nul
 rem Build the one downloadable artifact: dist\CyberAquarium-v<version>-portable.zip
 rem Then attach it to a GitHub Release (repo only carries source; runtime/ and dist/ are gitignored).
-rem ASCII only on purpose (cmd.exe doesn't read UTF-8); Chinese file names use wildcards.
+rem ASCII only on purpose (cmd.exe doesn't read UTF-8); Chinese names are used literally below.
 rem
-rem Layout of the zip:
+rem Zip layout:
 rem   CyberAquarium\
-rem     启动赛博鱼缸.vbs   (the same launcher as in the repo root, auto-detects this layout)
-rem     使用说明.txt
-rem     说明书.html
+rem     赛博鱼缸.exe      launcher compiled here from tools\launcher.cs (icon + version embedded)
+rem     使用说明.txt / 说明书.html
 rem     runtime\          slimmed Electron runtime
 rem     app\              the app (copied from cyber-aquarium\)
 rem
@@ -27,10 +28,20 @@ if "%RUNTIME%"=="" set "RUNTIME=%ROOT%\runtime"
 
 if not exist "%RUNTIME%\electron.exe" (
   echo Electron runtime not found: %RUNTIME%\electron.exe
-  echo Unpack it to D:\CyberAquarium\runtime , or set AQ_RUNTIME.
+  echo Unpack Electron to the repo\runtime , or set AQ_RUNTIME.
   pause
   exit /b 1
 )
+
+rem ---- version comes from the app's package.json ----
+set "VER="
+for /f "tokens=2 delims=:" %%v in ('findstr /c:"\"version\"" "%ROOT%\cyber-aquarium\package.json"') do set "VER=%%v"
+set "VER=%VER: =%"
+set "VER=%VER:"=%"
+set "VER=%VER:,=%"
+if "%VER%"=="" set "VER=0.0.0"
+set "OUT=%DIST%\CyberAquarium-v%VER%-portable.zip"
+del /f /q "%OUT%" 2>nul
 
 if exist "%PKG%" rmdir /s /q "%PKG%"
 mkdir "%PKG%\app" 2>nul
@@ -50,19 +61,30 @@ echo [3/5] app ...
 robocopy "%ROOT%\cyber-aquarium" "%PKG%\app" /E /PURGE /NFL /NDL /NJH /NJS /NP >nul
 
 echo [4/5] launcher + docs ...
+rem 重新编译启动器，把版本号写进文件属性（右键 - 属性 - 详细信息能看到）
+set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if not exist "%CSC%" set "CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+if not exist "%CSC%" goto nocsc
+
+set "VCS=%ROOT%\tools\_version.cs"
+del /f /q "%VCS%" 2>nul
+echo using System.Reflection;>>"%VCS%"
+echo [assembly: AssemblyVersion("%VER%.0")]>>"%VCS%"
+echo [assembly: AssemblyFileVersion("%VER%")]>>"%VCS%"
+echo [assembly: AssemblyInformationalVersion("%VER%")]>>"%VCS%"
+echo [assembly: AssemblyCopyright("Copyright (c) 2026 PanXingcheng")]>>"%VCS%"
+
+"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ "/out:%ROOT%\赛博鱼缸.exe" "/win32icon:%ROOT%\assets\aquarium.ico" /reference:System.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll "%ROOT%\tools\launcher.cs" "%VCS%" >nul
+if errorlevel 1 echo   WARNING: launcher compile failed, keeping the existing exe
+del /f /q "%VCS%" 2>nul
+goto launcherdone
+:nocsc
+echo   WARNING: csc not found, keeping the existing exe
+:launcherdone
+
 copy /y "%ROOT%\赛博鱼缸.exe" "%PKG%\" >nul
-copy /y "%ROOT%\创建桌面快捷方式.vbs" "%PKG%\" >nul
 copy /y "%ROOT%\使用说明.txt" "%PKG%\" >nul
 copy /y "%ROOT%\*.html" "%PKG%\" >nul
-rem 版本号从 app 的 package.json 里读，让产物自带版本（zip 内部结构不变）
-set "VER="
-for /f "tokens=2 delims=:" %%v in ('findstr /c:"\"version\"" "%ROOT%\cyber-aquarium\package.json"') do set "VER=%%v"
-set "VER=%VER: =%"
-set "VER=%VER:"=%"
-set "VER=%VER:,=%"
-if "%VER%"=="" set "VER=0.0.0"
-set "OUT=%DIST%\CyberAquarium-v%VER%-portable.zip"
-if exist "%OUT%" del /f /q "%OUT%"
 
 echo [5/5] zip ...
 tar -a -c -f "%OUT%" -C "%DIST%" CyberAquarium
@@ -74,6 +96,10 @@ if errorlevel 1 (
 rem 摊开的中间目录不留在磁盘上（只留 zip）
 rmdir /s /q "%PKG%"
 
+rem 本地留一份历史版本，免得每次都要去 Release 下载
+if not exist "%DIST%\历史版本" mkdir "%DIST%\历史版本"
+copy /y "%OUT%" "%DIST%\历史版本\" >nul
+
 for %%F in ("%OUT%") do echo done: %%~zF bytes  ^-^>  %%~fF
-rem 从资源管理器双击时停下来让人看结果；带参数调用（脚本/CI）就不停
+rem 从资源管理器双击时停下来看结果；带参数调用（脚本/CI）就不停
 if "%~1"=="" pause
