@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('aq', {
   setTheme: (value) => ipcRenderer.invoke('aq:theme', value),
   setTop: (value) => ipcRenderer.invoke('aq:top', value),
   quit: () => ipcRenderer.invoke('aq:quit'),
+  openManual: () => ipcRenderer.invoke('aq:manual'),
 })

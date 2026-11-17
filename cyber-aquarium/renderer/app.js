@@ -22,6 +22,40 @@ const HUD_ROW = 21
 
 const DRAG_SQ = 16 // 4px²：小于这个位移算点击
 
+// 全局鱼速：所有动作（巡航/加速/受惊/追食/性格反应）同比缩放，比例不变
+const FISH_SPEED = 0.85
+// 食欲：饱食度越低越想吃；两头是硬规则，中间按概率掷骰子
+const APPETITE = {
+  full: 99, // SAT 到这个数就一口都不吃
+  ravenous: 15, // SAT 低于这个，撒什么全缸都来
+}
+// 每条鱼天生的贪吃系数（还会乘一个个体随机 0.85~1.2）
+const GREED = { clown: 1.25, still: 1.0, calm: 0.95, shy: 0.8 }
+// 吃饱后歇多久（秒），这段时间不再抢食
+const DIGEST = [6, 12]
+
+// 饥饿档位：SAT 100 → 0 掉四档，越低越"打蔫"（只影响表现，不影响能不能吃）
+const HUNGER = { hungry: 40, starving: 15, empty: 0.01 }
+const HUNGER_SPEED = [1, 0.9, 0.65, 0.45] // 正常 / 饿 / 很饿 / 饿坏 的游速系数
+const HUNGER_GREY = [0, 0.18, 0.46, 0.72] // 往灰青里混多少（四档要一眼能分出来）
+const HUNGER_GREY_TO = '#6b8f8f'
+const HUNGER_EMOTE = ['', '…', '…', '…'] // 都用点点点，只是频率不同
+const CHASE_SPEED = [1.9, 2.2, 2.6, 3.0] // 追食倍速：越饿越急
+const CLAIM_TTL = 2.5 // 鱼食认领的有效期（秒）
+const HUNGER_EMOTE_GAP = [0, [9, 18], [2.5, 4.5], [1.6, 3]] // 饿：偶尔来一下；很饿：经常；饿坏：一直
+
+// 抚摸：光标压在鱼身上停住不动才算
+const PET = {
+  dwell: { shy: 0.85, still: 0.6, calm: 0.55, clown: 0.45 }, // 要停多久才认（都往后推了一点）
+  heartGap: { shy: 0.95, still: 0.78, calm: 0.85, clown: 0.62 }, // 出爱心的基础间隔（实际还会乘一个随机数）
+  maxTime: 2.5, // 摸这么久它就游走
+  cool: 10, // 游走后的冷却（秒）
+  minSat: 15, // 饿到这个程度就摸不出爱心，只冒 …
+}
+
+// 小爱心
+const HEART = { ch: '♥', color: '#ff8ada', life: 1.15, rise: 1.7, cap: 12 }
+
 const P = {
   frame: '#1f8f8a',
   frameHi: '#63f7e8',
@@ -114,6 +148,8 @@ const bufCo = new Array(CELLS).fill('#ffffff')
 
 // ---------------------------------------------------------------- 模型
 
+let pelletSeq = 0
+
 const model = {
   satiety: 72,
   sizeName: 'medium',
@@ -125,11 +161,13 @@ const model = {
   dust: [],
   plants: [],
   sandPuffs: [],
+  hearts: [],
+  pet: { fish: null, time: 0, cool: 0 },
   cursor: { x: -1, y: -1, inside: false, stamp: 0 },
   t: 0,
   menuOpen: false,
   crab: { x: 24, y: CRAB.y, dir: 1, mode: 'wander', modeT: 2.5, pinch: 0, pinchFrom: 0, walk: 0, speed: 0, stride: 0, puffs: 1, dodgeDir: 0 },
-  stats: { dragStarts: 0, dragEnds: 0, feeds: 0, scares: 0, paints: 0, pinches: 0, yields: 0 },
+  stats: { dragStarts: 0, dragEnds: 0, feeds: 0, scares: 0, paints: 0, pinches: 0, yields: 0, pets: 0 },
 }
 
 let down = null
@@ -190,8 +228,12 @@ function makeFish(spec) {
   return {
     body: kind.body,
     color: kind.color,
-    base: kind.base,
+    base: kind.base * FISH_SPEED,
     temper: kind.temper,
+    greed: (GREED[kind.temper] || 1) * rand(0.85, 1.2),
+    fullT: 0,
+    want: -1,
+    wantYes: false,
     orbit: 0,
     x: rand(3, COLS - 4 - kind.body.length),
     y: rand(WATER_TOP + 2, WATER_BOTTOM - 0.4),
@@ -202,6 +244,15 @@ function makeFish(spec) {
     scare: 0,
     fleeX: 0,
     trail: 0,
+    emote: '',
+    emoteT: rand(2, 5),
+    emoteLife: 0,
+    petT: 0,
+    petHeart: 0,
+    bite: rand(-1.2, 1.2),
+    bumpT: 0,
+    bumpDir: 0,
+    bumpCool: 0,
     mode: 'cruise',
     modeT: rand(2, 6),
     sleepY: 0,
@@ -221,6 +272,7 @@ function addFish(clown) {
 
 function spawnPellet(x, y) {
   model.pellets.push({
+    id: ++pelletSeq,
     x: clamp(x, 1.4, COLS - 2.6),
     y: clamp(y, WATER_TOP + 0.2, WATER_BOTTOM),
     vy: 1.6,
@@ -277,13 +329,177 @@ function seedPlants() {
 
 // ---------------------------------------------------------------- 模拟
 
+// ---------------------------------------------------------------- 饥饿 / 抚摸
+
+/** 当前饥饿档位：0 正常 / 1 饿 / 2 很饿 / 3 饿坏 */
+function hungerTier() {
+  if (model.satiety <= HUNGER.empty) return 3
+  if (model.satiety < HUNGER.starving) return 2
+  if (model.satiety < HUNGER.hungry) return 1
+  return 0
+}
+
+/** #rrggbb 之间线性混合 */
+function mixHex(a, b, t) {
+  const pa = parseInt(a.slice(1), 16)
+  const pb = parseInt(b.slice(1), 16)
+  const r = Math.round(((pa >> 16) & 255) * (1 - t) + ((pb >> 16) & 255) * t)
+  const g = Math.round(((pa >> 8) & 255) * (1 - t) + ((pb >> 8) & 255) * t)
+  const bl = Math.round((pa & 255) * (1 - t) + (pb & 255) * t)
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1)
+}
+
+function spawnHeart(f) {
+  if (model.hearts.length >= HEART.cap) model.hearts.shift()
+  model.hearts.push({
+    x: f.x + f.body.length / 2 + rand(-0.5, 0.5),
+    y: f.y - 0.6,
+    vy: HEART.rise * rand(0.85, 1.2),
+    sway: rand(0, 6.28),
+    age: 0,
+    life: HEART.life * rand(0.85, 1.15),
+  })
+}
+
+/**
+ * 鱼和鱼、鱼和螃蟹撞上时的小反应：
+ * 不闪白、不窜走，只是被撞的那两条各自换个深度错开 + 慢半拍，
+ * 而且要有"迟钝"——发现撞了要 delay，不是一碰就弹开。
+ */
+function stepBumps(dt) {
+  const fish = model.fish
+  for (const f of fish) {
+    if (f.bumpCool > 0) f.bumpCool -= dt
+    if (f.bumpT > 0) f.bumpT -= dt
+  }
+  for (let i = 0; i < fish.length; i++) {
+    const a = fish[i]
+    if (a.bumpCool > 0 || a.scare > 0 || a.petT > 0) continue
+    const ax = a.x + a.body.length / 2
+
+    // 鱼 × 鱼
+    for (let j = i + 1; j < fish.length; j++) {
+      const b = fish[j]
+      if (b.bumpCool > 0 || b.scare > 0 || b.petT > 0) continue
+      if (Math.abs(a.y - b.y) > 0.9) continue
+      const bx = b.x + b.body.length / 2
+      const reach = (a.body.length + b.body.length) / 4
+      if (Math.abs(ax - bx) > reach) continue
+      if (Math.random() > dt * 5) continue // 迟钝：看到了也反应慢半拍
+      const up = a.y <= b.y ? -1 : 1
+      a.bumpT = 0.55
+      a.bumpDir = up
+      a.bumpCool = 3
+      b.bumpT = 0.55
+      b.bumpDir = -up
+      b.bumpCool = 3
+      spawnBubble(ax, a.y - 0.25)
+      break
+    }
+    if (a.bumpCool > 0) continue
+
+    // 鱼 × 螃蟹：螃蟹在沙面上，鱼贴过去会被它挡一下（往上让开）
+    const crab = model.crab
+    const crabCx = crab.x + CRAB.w / 2
+    if (a.y > CRAB.y - 1.8 && Math.abs(ax - crabCx) < CRAB.w / 2 + 1.2) {
+      if (Math.random() < dt * 4) {
+        a.bumpT = 0.6
+        a.bumpDir = -1
+        a.bumpCool = 3
+        spawnBubble(ax, a.y - 0.25)
+      }
+    }
+  }
+}
+
+function stepHearts(dt) {
+  for (let i = model.hearts.length - 1; i >= 0; i--) {
+    const h = model.hearts[i]
+    h.age += dt
+    h.y -= h.vy * dt
+    h.x += Math.sin(model.t * 3 + h.sway) * 0.6 * dt
+    if (h.age >= h.life) model.hearts.splice(i, 1)
+  }
+}
+
+/**
+ * 抚摸 = 光标压在鱼身上**停住不动**。判定靠 cursor.stamp（最后一次移动的时间）：
+ *   想摸 → 停 > dwell；手快 → 直接按惊吓处理（还是原来那套）
+ * 摸的时候鱼停下不动、头顶冒 ♥；摸够 maxTime 就摆尾游走，冷却 cool 秒。
+ * 饿到 PET.minSat 以下摸不出爱心，只冒一个 …（跟饥饿系统联动）。
+ */
+function stepPetting(dt) {
+  const cur = model.cursor
+  const pet = model.pet
+  pet.cool = Math.max(0, pet.cool - dt)
+  if (!cur.inside) {
+    pet.fish = null
+    pet.time = 0
+    return
+  }
+  const f = fishAt(cur.x, cur.y)
+  // 睡着的鱼摸不动：只有点一下才能叫醒（点击走的是 scareFish，不受这里影响）
+  if (!f || f.mode === 'sleep' || f.scare > 0 || pet.cool > 0 || f.petCool > 0) {
+    pet.fish = null
+    pet.time = 0
+    return
+  }
+  const need = PET.dwell[f.temper] || 0.4
+  if (model.t - cur.stamp < need) {
+    pet.fish = null
+    pet.time = 0
+    return
+  }
+  if (pet.fish !== f) {
+    pet.fish = f
+    pet.time = 0
+    f.petHeart = 0
+  }
+  pet.time += dt
+  f.petT = 0.25 // 让 stepFish 这一帧保持安静
+  const cx = f.x + f.body.length / 2
+  const toward = Math.sign(cur.x - cx)
+
+  if (model.satiety < PET.minSat) {
+    // 饿得没心情：只冒 …
+    f.petHeart -= dt
+    if (f.petHeart <= 0) {
+      f.petHeart = 0.9
+      f.emote = '…'
+      f.emoteLife = 1.2
+    }
+  } else {
+    f.petHeart -= dt
+    if (f.petHeart <= 0) {
+      f.petHeart = (PET.heartGap[f.temper] || 0.7) * rand(0.8, 1.55)
+      spawnHeart(f)
+      model.stats.pets++
+      if (f.temper === 'clown' && toward) f.x += toward * 0.2
+    }
+  }
+
+  if (pet.time >= PET.maxTime) {
+    pet.cool = PET.cool
+    pet.fish = null
+    pet.time = 0
+    f.petT = 0
+    f.dir = toward ? -toward : 1
+    f.mode = 'cruise'
+    f.modeT = rand(2, 4)
+    f.think = 0.2
+  }
+}
+
 function step(dt) {
   model.t += dt
   // 饱食度衰减：满 100 点大约撑 5 小时
   model.satiety = clamp(model.satiety - dt * (100 / (5 * 3600)), 0, 100)
 
   stepPellets(dt)
+  stepPetting(dt)
+  stepBumps(dt)
   for (const f of model.fish) stepFish(f, dt)
+  stepHearts(dt)
   stepCrab(dt)
   stepSandPuffs(dt)
   stepBubbles(dt)
@@ -304,14 +520,46 @@ function stepPellets(dt) {
         p.settled = true
       }
     }
-    if (p.age > 24) model.pellets.splice(i, 1)
+    if (p.age > 45) model.pellets.splice(i, 1) // 留久一点：鱼吃饱了也还能慢慢来吃
   }
 }
 
 function stepFish(f, dt) {
   f.think -= dt
   f.modeT -= dt
+  f.petCool = Math.max(0, (f.petCool || 0) - dt)
+  if (f.emoteLife > 0) f.emoteLife -= dt
   const cx = f.x + f.body.length / 2
+
+  // 被撞了一下：慢慢换个深度错开，速度也慢下来（不闪白、不窜）
+  if (f.bumpT > 0) {
+    f.y += (f.bumpDir || 1) * 1.15 * dt
+    f.x += f.dir * f.base * 0.55 * dt
+    clampFish(f)
+    return
+  }
+
+  // 被摸：安静下来，只轻轻上下浮
+  if (f.petT > 0) {
+    f.petT -= dt
+    f.y += Math.sin(model.t * 2.4 + f.seed) * 0.4 * dt
+    clampFish(f)
+    return
+  }
+
+  // 饿出来的情绪：越低越频繁地顶个 … / ?（睡着的时候不冒，只留 z）
+  f.emoteT -= dt
+  if (f.emoteT <= 0 && f.mode !== 'sleep') {
+    const tier = hungerTier()
+    const gap = HUNGER_EMOTE_GAP[tier] || [6, 10]
+    f.emoteT = rand(gap[0], gap[1])
+    if (tier > 0) {
+      // SAT < 5：头顶改冒 !（跟底栏数字闪红同步），其余饿档都是 …
+      f.emote = model.satiety < 5 ? '!' : HUNGER_EMOTE[tier]
+      // 越饿顶得越久：很饿 / 饿坏挂 2.4 秒，饿的时候 1.8 秒
+      f.emoteLife = tier >= 2 ? 2.4 : 1.8
+    }
+  }
 
   // 受惊：朝反方向窜一小段
   if (f.scare > 0) {
@@ -328,20 +576,23 @@ function stepFish(f, dt) {
     return
   }
 
-  const pellet = nearestPellet(f)
-  if (pellet && model.satiety < 99.5) {
+  if (f.fullT > 0) f.fullT -= dt
+  const pellet = f.fullT > 0 ? null : nearestPellet(f)
+  if (pellet && model.satiety < APPETITE.full) {
     if (f.mode === 'sleep') {
       f.mode = 'cruise'
       f.modeT = rand(3, 6)
     }
-    const dx = pellet.x - cx
+    const targetX = pellet.x + (f.bite || 0)
+    const dx = targetX - cx
     const dy = pellet.y - f.y
     if (dx !== 0) f.dir = dx > 0 ? 1 : -1
-    const sp = f.base * 1.9
+    // 越饿冲得越快（正常 1.9 倍速，饿坏 3.0 倍速），喂食的动静一看就知道谁饿
+    const sp = f.base * CHASE_SPEED[hungerTier()]
     f.x += Math.sign(dx) * Math.min(Math.abs(dx), sp * dt)
     f.y += Math.sign(dy) * Math.min(Math.abs(dy), sp * 0.85 * dt)
     // 纵向判定要够宽：落在沙面（19.65）的鱼食，鱼最多只到 18.8，差值 0.85
-    if (Math.abs(dx) < 1.5 && Math.abs(dy) < 1.15) eat(f, pellet)
+    if (Math.abs(pellet.x - cx) < 1.6 && Math.abs(dy) < 1.15) eat(f, pellet)
     clampFish(f)
     return
   }
@@ -390,7 +641,8 @@ function stepFish(f, dt) {
     f.think = rand(2, 5)
     if (Math.random() < 0.4) f.dir *= -1
   }
-  const speed = f.mode === 'burst' ? f.base * 2.9 : f.base
+  const hungerK = HUNGER_SPEED[hungerTier()]
+  const speed = (f.mode === 'burst' ? f.base * 2.9 : f.base) * hungerK
   f.x += f.dir * speed * dt
   const minX = 1.25
   const maxX = COLS - 2 - f.body.length
@@ -402,6 +654,8 @@ function stepFish(f, dt) {
     f.dir = -1
   }
   if (f.targetY != null) {
+    // 饿坏了会往下沉：目标深度压到缸底那几行（一眼看得出它没精神）
+    if (hungerTier() === 3) f.targetY = Math.max(f.targetY, WATER_BOTTOM - 2.5)
     const dy = f.targetY - f.y
     f.y += Math.sign(dy) * Math.min(Math.abs(dy), 0.8 * dt)
   }
@@ -431,14 +685,14 @@ function stepCursorPull(f, dt) {
   const since = model.t - cur.stamp
 
   if (f.temper === 'shy') {
-    if (dist > 7) {
+    if (dist > 5.5) {
       f.orbit = 0
       return false
     }
     f.orbit = 0
     // 朝远离光标的方向加速窜
     f.dir = vx > 0 ? 1 : -1
-    f.x += f.dir * f.base * 2.5 * dt
+    f.x += f.dir * f.base * 2.1 * dt
     f.y += (vy > 0 ? 1 : -1) * 0.7 * dt
     if (Math.random() < dt * 3) spawnBubble(fishMouth(f), f.y - 0.2)
     f.mode = 'cruise'
@@ -449,7 +703,7 @@ function stepCursorPull(f, dt) {
 
   if (f.temper === 'still') {
     // 光标停住一小会儿才开始好奇
-    if (since < 1.2 || dist > 13) {
+    if (since < 1.8 || dist > 11) {
       f.orbit = 0
       return false
     }
@@ -486,7 +740,7 @@ function stepCursorPull(f, dt) {
       return false
     }
     // 互动最强：你动不动它都来，而且贴得更近
-    if (dist > 18) {
+    if (dist > 14) {
       f.orbit = 0
       return false
     }
@@ -509,7 +763,7 @@ function stepCursorPull(f, dt) {
 
   // calm：只对正在移动的光标有反应
   f.orbit = 0
-  if (since > 0.9 || dist > 8) return false
+  if (since > 0.7 || dist > 6.5) return false
   f.dir = cur.x > cx ? 1 : -1
   const gap = cur.x - f.body.length / 2 - f.x
   if (Math.abs(gap) > 3) f.x += Math.sign(gap) * f.base * 0.4 * dt
@@ -728,11 +982,32 @@ function pinchCrab(cell) {
   return true
 }
 
+/**
+ * 找最近的鱼食。加了个"认领"机制：一颗食同一时间只归一条鱼，
+ * 否则七条鱼会叠在一个格子里，看着像只剩一条。
+ * 认领会在 CLAIM_TTL 秒后失效（那条鱼被吓跑/睡着不再回来时会自动放开）。
+ */
+/**
+ * 这条鱼想不想吃这颗食：
+ *   SAT ≥ 99 → 不吃（吃饱了，一口都懒得动）
+ *   SAT < 15 → 一定来（饿极了，全缸都会冲）
+ *   中间      → 按食欲 × 这条鱼贪吃的程度掷骰子，同一颗食只掷一次
+ */
+function wantsPellet(f, p) {
+  if (model.satiety >= APPETITE.full) return false
+  if (model.satiety < APPETITE.ravenous) return true
+  if (f.want === p.id) return f.wantYes
+  const appetite = 1 - model.satiety / 100
+  f.want = p.id
+  f.wantYes = Math.random() < clamp(appetite * f.greed, 0.02, 0.98)
+  return f.wantYes
+}
 function nearestPellet(f) {
   const cx = f.x + f.body.length / 2
   let best = null
   let bestD = Infinity
   for (const p of model.pellets) {
+    if (p.claimF && p.claimF !== f && model.t - p.claimAt < CLAIM_TTL) continue
     const dx = p.x - cx
     const dy = p.y - f.y
     const d = dx * dx + dy * dy * 2.4
@@ -741,15 +1016,22 @@ function nearestPellet(f) {
       best = p
     }
   }
+  if (!best) return null
+  if (!wantsPellet(f, best)) return null
+  best.claimF = f
+  best.claimAt = model.t
   return best
 }
 
 function eat(f, pellet) {
   const i = model.pellets.indexOf(pellet)
   if (i >= 0) model.pellets.splice(i, 1)
-  model.satiety = clamp(model.satiety + 2.5, 0, 100)
+  model.satiety = clamp(model.satiety + 1, 0, 100) // 一颗粮 = 1 点饱食度
   spawnBubble(pellet.x, pellet.y)
   f.think = 0.2
+  // 吃饱了就歇一会，不再跟别的鱼抢（免得一条鱼把一缸食吃光）
+  f.fullT = rand(DIGEST[0], DIGEST[1])
+  f.want = -1
 }
 
 /** 点在中鱼身上 → 惊走，不投食 */
@@ -805,6 +1087,17 @@ function compose() {
       // 睡着的鱼头顶飘一个 z，慢慢眨眼
       put(c0 + body.length + 1, r - 1, Math.floor(model.t * 0.8) % 2 === 0 ? 'z' : 'Z', '#2f8e89')
     }
+    // 饿了 / 被摸时的情绪符号，飘在头顶
+    if (f.emote && f.emoteLife > 0) {
+      const k = Math.min(1, f.emoteLife / 1.2)
+      put(c0 + Math.floor(body.length / 2), r - 1, f.emote, mixHex('#2b4a4a', '#c9f7f2', k))
+    }
+  }
+
+  // 小爱心：边飘边淡
+  for (const h of model.hearts) {
+    const k = h.age / h.life
+    put(h.x, h.y, HEART.ch, mixHex(HEART.color, '#3a2230', Math.min(0.85, k)))
   }
 
   // 螃蟹走动踢起来的沙
@@ -962,9 +1255,13 @@ function drawCrabGlow() {
 
 function drawHud() {
   const pct = Math.round(model.satiety)
-  const pctColor = pct < 20 ? P.hudAlarm : pct < 45 ? P.hudWarn : P.hud
-  putText(2, HUD_ROW, 'SAT', '#2f8e89')
-  putText(6, HUD_ROW, String(pct).padStart(3) + '%', pctColor)
+  const tier = hungerTier()
+  const pctColor = tier === 3 ? '#ff4d4d' : pct < 20 ? P.hudAlarm : pct < 45 ? P.hudWarn : P.hud
+  putText(2, HUD_ROW, 'SAT', tier >= 2 ? '#ff6b6b' : tier === 1 ? '#b98a4a' : '#2f8e89')
+  // 数字紧挨着 SAT；低于 5 开始闪（亮红 / 暗红交替）
+  const crit = model.satiety < 5
+  const on = !crit || Math.floor(model.t * 3) % 2 === 0
+  putText(6, HUD_ROW, String(pct) + '%', crit ? (on ? '#ff4d4d' : '#5c1b1b') : pctColor)
   const tail = 'x' + model.fish.length
   putText(COLS - 2 - tail.length, HUD_ROW, tail, '#2f8e89')
 }
@@ -1108,10 +1405,14 @@ function drawSand() {
 /** 一条鱼第 i 个字符用哪个颜色（compose 和发光层共用） */
 function fishCharColor(f, i, len) {
   if (f.scare > 0) return '#ffffff'
-  if (f.paint === 'clown') return CLOWN_BANDS[i] || f.color
-  if (f.paint === 'duo') return i === 0 || i === len - 1 ? f.accent : f.color
-  if (f.paint === 'rainbow') return RAINBOW[(f.hue + i) % RAINBOW.length]
-  return f.color
+  let c
+  if (f.paint === 'clown') c = CLOWN_BANDS[i] || f.color
+  else if (f.paint === 'duo') c = i === 0 || i === len - 1 ? f.accent : f.color
+  else if (f.paint === 'rainbow') c = RAINBOW[(f.hue + i) % RAINBOW.length]
+  else c = f.color
+  // 饿了就掉一档色：往灰青里混，越低越明显（颜色本身不写回 f.color）
+  const grey = HUNGER_GREY[hungerTier()]
+  return grey > 0 ? mixHex(c, HUNGER_GREY_TO, grey) : c
 }
 
 /**
@@ -1293,13 +1594,22 @@ const MENU_ITEMS = [
   { act: 'add', label: '再加一条鱼' },
   { act: 'remove', label: '捞走一条鱼' },
   { sep: true },
-  { act: 'size:small', label: '尺寸 · 小' },
-  { act: 'size:medium', label: '尺寸 · 中' },
-  { act: 'size:large', label: '尺寸 · 大' },
+  { act: 'clear', label: '换一缸清水' },
+  { act: 'scape', label: '换一缸水草' },
   { sep: true },
-  { act: 'clear', label: '换水（清掉鱼食）' },
-  { act: 'theme', label: '深色外壳', toggle: true },
+  {
+    row: '尺寸',
+    options: [
+      { act: 'size:small', label: '小' },
+      { act: 'size:medium', label: '中' },
+      { act: 'size:large', label: '大' },
+    ],
+  },
+  { sep: true },
+  { act: 'theme', label: '深色模式', toggle: true },
   { act: 'top', label: '总在最前', toggle: true },
+  { sep: true },
+  { act: 'manual', label: '使用说明' },
   { sep: true },
   { act: 'quit', label: '退出', danger: true },
 ]
@@ -1309,6 +1619,28 @@ function buildMenu() {
   for (const item of MENU_ITEMS) {
     if (item.sep) {
       menuEl.appendChild(document.createElement('hr'))
+      continue
+    }
+    // 尺寸：一行标题 + 一排单选圆点
+    if (item.row) {
+      const row = document.createElement('div')
+      row.className = 'menu-row'
+      const head = document.createElement('span')
+      head.className = 'menu-row-head'
+      head.textContent = item.row
+      row.appendChild(head)
+      const opts = document.createElement('div')
+      opts.className = 'menu-row-opts'
+      for (const opt of item.options) {
+        const dot = document.createElement('button')
+        dot.type = 'button'
+        dot.dataset.act = opt.act
+        dot.className = 'dot'
+        dot.textContent = opt.label
+        opts.appendChild(dot)
+      }
+      row.appendChild(opts)
+      menuEl.appendChild(row)
       continue
     }
     const btn = document.createElement('button')
@@ -1333,10 +1665,19 @@ function buildMenu() {
 }
 
 function refreshMenuState() {
+  const nonClown = model.fish.filter((f) => f.temper !== 'clown').length
   for (const btn of menuEl.querySelectorAll('button')) {
     const act = btn.dataset.act
     const on = (act === 'top' && model.alwaysOnTop) || (act === 'theme' && model.theme === 'dark')
     btn.classList.toggle('is-on', on)
+    // 尺寸单选：当前档亮起来
+    if (act.startsWith('size:')) {
+      btn.classList.toggle('is-on', act === 'size:' + model.sizeName)
+      continue
+    }
+    // 到上限 / 只剩小丑鱼时置灰，点了也不做无用功
+    if (act === 'add') btn.disabled = model.fish.length >= 8
+    if (act === 'remove') btn.disabled = nonClown === 0
   }
 }
 
@@ -1381,8 +1722,14 @@ function runAction(act) {
     }
     save()
   } else if (act === 'clear') {
+    // 换水：只把水里漂的鱼食清掉，水草一根不动
     model.pellets.length = 0
     for (let i = 0; i < 6; i++) spawnBubble(rand(3, COLS - 4), rand(WATER_TOP + 2, SEABED_ROW - 1))
+  } else if (act === 'scape') {
+    // 换一缸水草：重新长一遍（位置/高低/形态/色调全换），顺手把剩的鱼食清掉
+    model.pellets.length = 0
+    seedPlants()
+    for (let i = 0; i < 10; i++) spawnBubble(rand(3, COLS - 4), rand(WATER_TOP + 3, SEABED_ROW - 2))
   } else if (act === 'top') {
     model.alwaysOnTop = !model.alwaysOnTop
     window.aq.setTop(model.alwaysOnTop)
@@ -1396,6 +1743,10 @@ function runAction(act) {
     return
   } else if (act.startsWith('size:')) {
     applySize(act.slice(5))
+    return
+  } else if (act === 'manual') {
+    window.aq.openManual()
+    closeMenu()
     return
   } else if (act === 'quit') {
     save()
@@ -1596,6 +1947,10 @@ async function init() {
     mouthOf: (f) => fishMouth(f),
     crab: () => model.crab,
     teasing: () => teasingCrab(),
+    fishColor: (i) => fishCharColor(model.fish[i], 0, model.fish[i].body.length),
+    hearts: () => model.hearts.length,
+    willEat: (f, id) => wantsPellet(f, { id }),
+    hungerTier: () => hungerTier(),
     repaint: () => paint(),
     closeMenu,
     model,

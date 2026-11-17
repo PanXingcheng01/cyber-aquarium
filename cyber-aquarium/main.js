@@ -5,7 +5,7 @@
  * 窗口：无边框 / 透明 / 置顶 / 不进任务栏 —— 屏幕上只有字符本身。
  * 拖动：窗口跟着鼠标走（主进程按屏幕光标位置重定位），所以拖动和"点一下喂食"靠 4px 位移阈值区分，
  *       跟 dsh-whale-widget 的 drag.moved 判定是同一套思路。 */
-const { app, BrowserWindow, ipcMain, screen } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, shell } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 
@@ -24,7 +24,9 @@ const DEFAULT_STATE = {
   y: null,
   size: 'medium',
   theme: 'clear',
-  satiety: 55,
+  // 第一次启动（没有 state.json）时给 4：刚好跌破 5，鱼一出来就是"饿坏了"（头顶 ! 、底栏闪红）
+  // 之后就全听存档的，不会再重置
+  satiety: 4,
   fishCount: 3,
   alwaysOnTop: true,
   savedAt: Date.now(),
@@ -417,7 +419,7 @@ async function runCapture(target) {
         shy.scare = 0
         shy.x = 20
         shy.y = 8
-        setCursor(17, 8, 0)
+        setCursor(19, 8, 0)
         const shyX0 = shy.x
         window.__aq.stepSim(20)
         const shyFled = shy.x - shyX0 > 1
@@ -430,7 +432,7 @@ async function runCapture(target) {
         curious.scare = 0
         curious.x = 20
         curious.y = 8
-        setCursor(12, 8, 3)
+        setCursor(14, 8, 3)
         const d0 = Math.hypot(curious.x, curious.y - 8)
         window.__aq.stepSim(45)
         const d1 = Math.hypot(curious.x, curious.y - 8)
@@ -446,7 +448,7 @@ async function runCapture(target) {
         calm.scare = 0
         calm.x = 26
         calm.y = 8
-        setCursor(22, 8, 0)
+        setCursor(24, 8, 0)
         const calmX0 = calm.x
         window.__aq.stepSim(9) // 0.6 秒：仍在"光标刚动过"的窗口内
         const calmFollowed = calmX0 - calm.x > 0.3
@@ -464,9 +466,29 @@ async function runCapture(target) {
         const mouthLeft = window.__aq.mouthOf({ dir: -1, x: 10, body: '><>' })
         const mouthOk = mouthRight === 12 && mouthLeft === 10
 
+        // 吃食测试前把其它鱼赶远：鱼食现在有"认领"，别人抢了就先吃不到
+        const isolateEater = (eater) => {
+          M.fish.forEach((x, i) => {
+            x.bumpT = 0
+            x.bumpCool = 0
+            x.scare = 0
+            x.petT = 0
+            if (x === eater) return
+            x.x = 3 + i * 5
+            x.y = 2.5
+            x.mode = 'cruise'
+            x.modeT = 30
+          })
+          M.cursor.inside = false // 别让鼠标性格插手
+          M.crab.x = 46 // 螃蟹挪远，免得鱼贴它触发"让一让"
+          M.crab.mode = 'wander'
+          M.crab.modeT = 99
+          M.pellets.length = 0
+        }
         // 吃食逻辑：落在沙面上的鱼食也要吃得到（鱼最低只到 18.8，食在 19.65）
-        M.satiety = 80
+        M.satiety = 10 // 饿极了：食欲判定的硬规则，必吃
         const eater = M.fish[0]
+        isolateEater(eater)
         eater.x = 20
         eater.y = 17.5
         eater.mode = 'cruise'
@@ -474,16 +496,10 @@ async function runCapture(target) {
         M.pellets.length = 0
         M.pellets.push({ x: 22.5, y: 19.65, vy: 0, age: 0, settled: true })
         const satA = M.satiety
-        window.__aq.stepSim(30)
+        window.__aq.stepSim(40)
         const ateSettled = M.pellets.length === 0 && M.satiety > satA
 
-        // 饱食度已经很高时，仍然愿意吃
-        M.satiety = 97
-        M.pellets.length = 0
-        M.pellets.push({ x: 22.5, y: 19.65, vy: 0, age: 0, settled: true })
-        const satB = M.satiety
-        window.__aq.stepSim(30)
-        const ateWhenFullish = M.pellets.length === 0 && M.satiety > satB
+
 
         // 深色外壳可以来回切（不假定起始是哪种，切两次要回到原样）
         const theme0 = M.theme
@@ -522,6 +538,8 @@ async function runCapture(target) {
           M.cursor.inside = true
           M.cursor.stamp = M.t
         }
+        // 先把鱼赶到上层：螃蟹测试不该被"让一让"打断
+        M.fish.forEach((f, i) => { f.x = 4 + i * 6; f.y = 4; f.mode = 'cruise'; f.modeT = 99; f.scare = 0 })
         crab.x = 30
         crab.mode = 'chase'
         crab.modeT = 99
@@ -606,7 +624,112 @@ async function runCapture(target) {
           clownFish.temper = clownTemper
         }
 
-        return JSON.stringify({ afterClick, feeds: M.stats.feeds, dragStarts, dragEnds: M.stats.dragEnds, menuAfterRightClick, menuItems, menuAfterSecondRightClick, hasClown, clownKept, shyFled, stillApproached, stillDbg: { d0: +d0.toFixed(2), d1: +d1.toFixed(2) }, calmFollowed, mouthOk, ateSettled, ateWhenFullish, themeOk, scares, scared, fedOnFish, crabPinched, crabIgnoredFood, crabStillOnSand, crabChased, crabFled, clownBackedOff, clownCameBack, crabSleptCrouched, crabSleptNoFeet, crabSleptClaws, crabYielded, fish: M.fish.length })
+        // ---- 饥饿表现 ----
+        M.satiety = 80
+        window.__aq.stepSim(1)
+        const colorFed = window.__aq.fishColor(0)
+        M.satiety = 0
+        window.__aq.stepSim(2)
+        const colorStarved = window.__aq.fishColor(0)
+        const hungryGrey = colorFed !== colorStarved && window.__aq.hungerTier() === 3
+        // SAT 3：头顶应该是 !
+        M.satiety = 3
+        M.fish.forEach((x) => { x.emoteT = 0.01 })
+        window.__aq.stepSim(2)
+        const starveBang = M.fish.some((x) => x.emote === '!')
+
+        // ---- 食欲：饱着不吃、饿着全来 ----
+        M.satiety = 100
+        const fullIgnores = M.fish.every((x) => !window.__aq.willEat(x, 99991))
+        M.satiety = 5
+        const ravenousAll = M.fish.every((x) => window.__aq.willEat(x, 99992))
+        M.satiety = 3
+        // 饿着也吃得到，吃完颜色回来
+        const chef = M.fish[0]
+        isolateEater(chef)
+        chef.x = 20
+        chef.y = 10
+        chef.scare = 0
+        chef.mode = 'cruise'
+        chef.modeT = 30
+        M.pellets.push({ x: 22.5, y: 10, vy: 0, age: 0, settled: true })
+        window.__aq.stepSim(30)
+        const ateWhenStarved = M.pellets.length === 0 && M.satiety > 0
+        const digestRest = (chef.fullT || 0) > 0
+        // 一颗食物只能把 0 抬到 2.5，还在"很饿"档：颜色应该从灰青好转一档（不是立刻恢复本色）
+        const revivedColor = window.__aq.fishColor(0) !== colorStarved
+
+        // ---- 抚摸出爱心 ----
+        M.satiety = 80
+        M.hearts.length = 0
+        const pets0 = M.stats.pets
+        const pf = M.fish[1] || M.fish[0]
+        pf.x = 30
+        pf.y = 9
+        pf.mode = 'cruise'
+        pf.modeT = 30
+        pf.scare = 0
+        pf.petCool = 0
+        M.cursor.x = Math.round(pf.x + pf.body.length / 2)
+        M.cursor.y = Math.round(pf.y)
+        M.cursor.inside = true
+        M.cursor.stamp = M.t - 3
+        window.__aq.stepSim(20)
+        const petHearts = M.hearts.length > 0 && M.stats.pets > pets0
+
+        // 饿到 15 以下：摸不出爱心
+        M.satiety = 5
+        M.hearts.length = 0
+        const pets1 = M.stats.pets
+        pf.x = 30
+        pf.y = 9
+        pf.petCool = 0
+        pf.modeT = 30
+        M.cursor.x = Math.round(pf.x + pf.body.length / 2)
+        M.cursor.y = Math.round(pf.y)
+        M.cursor.stamp = M.t - 3
+        window.__aq.stepSim(20)
+        const noHeartsStarving = M.hearts.length === 0 && M.stats.pets === pets1
+
+        // ---- 睡着时摸不出爱心，点一下才醒 ----
+        M.satiety = 80
+        M.hearts.length = 0
+        const pets2 = M.stats.pets
+        const sf = M.fish[2] || M.fish[0]
+        // 把别的鱼赶走，免得"撞一下"把这条睡着的鱼顶偏、点不中
+        M.fish.forEach((x, i) => {
+          if (x === sf) return
+          x.x = 3 + i * 4
+          x.y = 3
+          x.mode = 'cruise'
+          x.modeT = 30
+          x.scare = 0
+          x.bumpT = 0
+          x.bumpCool = 0
+        })
+        sf.x = 26
+        sf.y = 9
+        sf.bumpT = 0
+        sf.bumpCool = 0
+        sf.mode = 'sleep'
+        sf.modeT = 30
+        sf.rest = true
+        sf.sleepY = sf.y
+        sf.scare = 0
+        sf.petCool = 0
+        M.cursor.x = Math.round(sf.x + sf.body.length / 2)
+        M.cursor.y = Math.round(sf.y)
+        M.cursor.inside = true
+        M.cursor.stamp = M.t - 3
+        window.__aq.stepSim(25)
+        const noHeartsSleeping = M.hearts.length === 0 && M.stats.pets === pets2 && sf.mode === 'sleep'
+        // 点它 → 惊醒（scare 覆盖睡觉）
+        const px2 = window.__aq.layout()
+        window.__aq.clickAt(px2.pad + (Math.round(sf.x) + 1 + 0.5) * px2.cellW, px2.pad + (Math.round(sf.y) + 0.5) * px2.cellH)
+        const clickWakesSleeping = sf.scare > 0
+        M.satiety = 80
+
+        return JSON.stringify({ afterClick, feeds: M.stats.feeds, dragStarts, dragEnds: M.stats.dragEnds, menuAfterRightClick, menuItems, menuAfterSecondRightClick, hasClown, clownKept, shyFled, stillApproached, stillDbg: { d0: +d0.toFixed(2), d1: +d1.toFixed(2) }, calmFollowed, mouthOk, ateSettled, themeOk, scares, scared, fedOnFish, crabPinched, crabIgnoredFood, crabStillOnSand, crabChased, crabFled, clownBackedOff, clownCameBack, crabSleptCrouched, crabSleptNoFeet, crabSleptClaws, crabYielded, hungryGrey, starveBang, fullIgnores, ravenousAll, ateWhenStarved, digestRest, revivedColor, petHearts, noHeartsStarving, noHeartsSleeping, clickWakesSleeping, fish: M.fish.length })
       } catch (e) { return JSON.stringify({ selftestError: String(e && (e.stack || e.message)) }) } })()`)
       console.log('selftest ' + res)
     }
@@ -652,7 +775,27 @@ async function runCapture(target) {
       })()`)
       await wait(500)
     }
-    if (process.argv.includes('--crab')) {
+    if (process.argv.includes('--crabclear')) {
+      // 截图用：鱼全赶走、螃蟹摆到中间站好
+      await win.webContents.executeJavaScript(`(() => {
+        const M = window.__aq.model
+        M.satiety = 85
+        M.crab.x = 26
+        M.crab.mode = 'wander'
+        M.crab.modeT = 999
+        M.crab.pinch = 0
+        M.fish.forEach((f, i) => {
+          f.x = 44 + (i % 3) * 3
+          f.y = 4 + i * 1.2
+          f.mode = 'cruise'
+          f.modeT = 999
+          f.scare = 0
+        })
+        M.pellets.length = 0
+        return true
+      })()`)
+      await wait(700)
+    }    if (process.argv.includes('--crab')) {
       // 点一下螃蟹：走真实的 clickAt 路径，夹人动作当场生效
       await win.webContents.executeJavaScript(`(() => {
         const a = window.__aq
@@ -665,7 +808,64 @@ async function runCapture(target) {
       })()`)
       await wait(180)
     }
-    if (process.argv.includes('--crabsleep')) {
+    const satArg = process.argv.find((a) => a.startsWith('--sat='))
+    if (satArg) {
+      // 截图用：把饱食度设成指定值，看四档的区分度
+      const v = Number(satArg.slice('--sat='.length)) || 0
+      await win.webContents.executeJavaScript(`(() => {
+        const M = window.__aq.model
+        M.satiety = ${v}
+        M.fish.forEach((f) => { f.emoteT = 0.05 })
+        return true
+      })()`)
+      await wait(900)
+    }    if (process.argv.includes('--clear') || process.argv.includes('--light')) {
+      // 截图用：强制透明外壳（不然会跟着存档里的深色模式走）
+      await win.webContents.executeJavaScript(`(() => {
+        const M = window.__aq.model
+        M.theme = 'clear'
+        document.body.classList.remove('dark')
+        return true
+      })()`)
+      await wait(350)
+    }    if (process.argv.includes('--hungry')) {
+      // 截图用：把饱食度清零，看"饿坏"的表现
+      await win.webContents.executeJavaScript(`(() => {
+        const M = window.__aq.model
+        M.satiety = 0
+        M.fish.forEach((f) => { f.emoteT = 0.05 })
+        return true
+      })()`)
+      await wait(700)
+    }
+    if (process.argv.includes('--pet')) {
+      // 截图用：把光标停在一条鱼身上，看小爱心
+      await win.webContents.executeJavaScript(`(() => {
+        const a = window.__aq
+        const M = a.model
+        const f = M.fish[0]
+        f.x = 24
+        f.y = 8
+        f.mode = 'cruise'
+        f.modeT = 30
+        f.scare = 0
+        M.satiety = 80
+        M.cursor.x = Math.round(f.x + f.body.length / 2)
+        M.cursor.y = Math.round(f.y)
+        M.cursor.inside = true
+        M.cursor.stamp = M.t - 2
+        return true
+      })()`)
+      await wait(1200)
+      const dbg = await win.webContents.executeJavaScript(`JSON.stringify({
+        hearts: window.__aq.model.hearts.length,
+        petTime: +window.__aq.model.pet.time.toFixed(2),
+        petFish: !!window.__aq.model.pet.fish,
+        cursor: window.__aq.model.cursor,
+        f0: { x: +window.__aq.model.fish[0].x.toFixed(1), y: +window.__aq.model.fish[0].y.toFixed(1), petT: +(window.__aq.model.fish[0].petT||0).toFixed(2), petCool: +(window.__aq.model.fish[0].petCool||0).toFixed(2) }
+      })`)
+      console.log('petdbg ' + dbg)
+    }    if (process.argv.includes('--crabsleep')) {
       // 截图用：把螃蟹按进睡姿（蹲下、收脚、合钳）
       await win.webContents.executeJavaScript(`(() => {
         const a = window.__aq
@@ -766,7 +966,14 @@ function registerIpc() {
     return on
   })
 
-  ipcMain.handle('aq:quit', () => {
+  ipcMain.handle('aq:manual', async () => {
+  // 说明书放在程序目录的上一级：开发布局在项目根，发布包里在 exe 旁边
+  const file = path.join(__dirname, '..', '说明书.html')
+  if (!fs.existsSync(file)) return { ok: false, file }
+  const err = await shell.openPath(file)
+  return { ok: !err, file, err }
+})
+ipcMain.handle('aq:quit', () => {
     saveState()
     app.quit()
     return true

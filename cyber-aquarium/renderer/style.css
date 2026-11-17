@@ -42,7 +42,7 @@ body.dark {
 #menu {
   position: fixed;
   z-index: 30;
-  min-width: 152px;
+  min-width: 124px;
   padding: 4px;
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(6, 22, 26, 0.95), rgba(3, 12, 16, 0.95));
@@ -81,7 +81,7 @@ body.dark {
   gap: 14px;
   width: 100%;
   height: 21px;
-  padding: 0 8px;
+  padding: 0 7px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -117,4 +117,58 @@ body.dark {
   margin: 4px 6px;
   border: 0;
   background: linear-gradient(90deg, transparent, rgba(110, 249, 255, 0.28), transparent);
+}
+
+/* 菜单里"尺寸"那一排：左标题 + 三个单选圆点 */
+#menu .menu-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 8px 4px;
+}
+
+#menu .menu-row-opts {
+  display: flex;
+  gap: 4px;
+}
+
+#menu .menu-row-head {
+  color: #6fa9ad;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+#menu button.dot {
+  width: auto;
+  height: 19px;
+  padding: 0 6px 0 5px;
+  gap: 5px;
+  color: #7fb6bb;
+  border-radius: 6px;
+}
+
+#menu button.dot::before {
+  content: '○';
+  font-size: 9px;
+  color: #4f8a8f;
+}
+
+#menu button.dot.is-on {
+  background: rgba(110, 249, 255, 0.14);
+  color: #eafffd;
+}
+
+#menu button.dot.is-on::before {
+  content: '●';
+  color: var(--cy);
+}
+
+#menu button:disabled {
+  opacity: 0.34;
+  cursor: default;
+}
+
+#menu button:disabled:hover {
+  background: transparent;
+  color: inherit;
 }
