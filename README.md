@@ -158,6 +158,7 @@ cyber-aquarium/
 │       ├── index.html
 │       ├── style.css          # 透明背景 + 辉光
 │       └── app.js             # ASCII 世界：鱼的 AI、螃蟹、水草、气泡、HUD、交互、菜单
+├── assets/aquarium.ico        # 图标（桌面快捷方式用）
 ├── shots/                     # 截图（README 用；说明书里是内嵌 base64）
 ├── tools/
 │   ├── 启动赛博鱼缸-调试.cmd   # 开发用，保留控制台看报错
