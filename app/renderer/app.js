@@ -24,12 +24,11 @@ const DRAG_SQ = 16 // 4px²：小于这个位移算点击
 
 // 全局鱼速：所有动作（巡航/加速/受惊/追食/性格反应）同比缩放，比例不变
 const FISH_SPEED = 0.85
-// 食欲：饱食度越低越想吃；两头是硬规则，中间按概率掷骰子
+// 食欲：饱食度越低越想吃；饱到 99 就一口不吃
 const APPETITE = {
   full: 99, // SAT 到这个数就一口都不吃
-  ravenous: 15, // SAT 低于这个，撒什么全缸都来
 }
-// 吃饱后歇多久（秒），这段时间不再抢食
+// 饱鱼吃完歇多久（秒）；饿鱼会按饥饿档缩短，饿坏可连续吃
 const DIGEST = [6, 12]
 
 // 饥饿档位：SAT 100 → 0 掉四档，越低越"打蔫"（只影响表现，不影响能不能吃）
@@ -39,7 +38,6 @@ const HUNGER_GREY = [0, 0.18, 0.46, 0.72] // 往灰青里混多少（四档要�
 const HUNGER_GREY_TO = '#6b8f8f'
 const HUNGER_EMOTE = ['', '…', '…', '…'] // 都用点点点，只是频率不同
 const CHASE_SPEED = [1.9, 2.2, 2.6, 3.0] // 追食倍速：越饿越急
-const CLAIM_TTL = 2.5 // 鱼食认领的有效期（秒）
 const HUNGER_EMOTE_GAP = [0, [9, 18], [2.5, 4.5], [1.6, 3]] // 饿：偶尔来一下；很饿：经常；饿坏：一直
 
 // SAT 消耗：静止基础消耗 + 按实际游速追加；惊吓另算一次
@@ -1382,9 +1380,7 @@ function pinchCrab(cell) {
 }
 
 /**
- * 找最近的鱼食。加了个"认领"机制：一颗食同一时间只归一条鱼，
- * 否则七条鱼会叠在一个格子里，看着像只剩一条。
- * 认领会在 CLAIM_TTL 秒后失效（那条鱼被吓跑/睡着不再回来时会自动放开）。
+ * 找最近的鱼食。不独占：多条鱼可以同时盯同一颗，谁先游到嘴边谁吃。
  */
 /**
  * 这条鱼想不想吃这颗食：
@@ -1394,11 +1390,14 @@ function pinchCrab(cell) {
  */
 function wantsPellet(f, p) {
   if (f.satiety >= APPETITE.full) return false
-  if (f.satiety < APPETITE.ravenous) return true
+  const tier = hungerTier(f)
+  if (tier >= 2) return true
   if (f.want === p.id) return f.wantYes
   const appetite = 1 - f.satiety / 100
+  // 饿档额外加成：普通饿也更容易开口
+  const eager = tier === 1 ? 1.35 : 1
   f.want = p.id
-  f.wantYes = Math.random() < clamp(appetite * f.greed, 0.02, 0.98)
+  f.wantYes = Math.random() < clamp(appetite * f.greed * eager, 0.02, 0.99)
   return f.wantYes
 }
 function nearestPellet(f) {
@@ -1406,7 +1405,7 @@ function nearestPellet(f) {
   let best = null
   let bestD = Infinity
   for (const p of model.pellets) {
-    if (p.claimF && p.claimF !== f && model.t - p.claimAt < CLAIM_TTL) continue
+    // 不独占：别的鱼也可以盯着同一颗，先碰到的那条吃
     const dx = p.x - cx
     const dy = p.y - f.y
     const d = dx * dx + dy * dy * 2.4
@@ -1417,20 +1416,21 @@ function nearestPellet(f) {
   }
   if (!best) return null
   if (!wantsPellet(f, best)) return null
-  best.claimF = f
-  best.claimAt = model.t
   return best
 }
 
 function eat(f, pellet) {
   const i = model.pellets.indexOf(pellet)
   if (i >= 0) model.pellets.splice(i, 1)
+  const wasTier = hungerTier(f)
   const [lo, hi] = bodySizeFor(f.body.length).food
   f.satiety = clamp(f.satiety + lo + Math.floor(Math.random() * (hi - lo + 1)), 0, 100)
   spawnBubble(pellet.x, pellet.y)
   f.think = 0.2
-  // 吃饱了就歇一会，不再跟别的鱼抢（免得一条鱼把一缸食吃光）
-  f.fullT = rand(DIGEST[0], DIGEST[1])
+  // 饿鱼不用按饱鱼的消化节奏等：越饿歇得越短，可以连着吃
+  if (wasTier >= 2) f.fullT = rand(0.12, 0.35)
+  else if (wasTier === 1) f.fullT = rand(0.7, 1.4)
+  else f.fullT = rand(DIGEST[0], DIGEST[1])
   f.want = -1
 }
 
@@ -2312,7 +2312,7 @@ function runAction(act) {
     return
   }
   if (act === 'feed') {
-    for (let i = 0; i < 6; i++) spawnPellet(rand(4, COLS - 5), rand(WATER_TOP + 0.5, WATER_TOP + 3))
+    for (let i = 0; i < 18; i++) spawnPellet(rand(4, COLS - 5), rand(WATER_TOP + 0.5, WATER_TOP + 3))
   } else if (act === 'add') {
     addFish()
     save()

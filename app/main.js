@@ -783,7 +783,7 @@ async function runCapture(target) {
         M.pellets.push({ x: 22.5, y: 10, vy: 0, age: 0, settled: true })
         window.__aq.stepSim(30)
         const ateWhenStarved = M.pellets.length === 0 && M.satiety > 0
-        const digestRest = (chef.fullT || 0) > 0
+        const digestRest = (chef.fullT || 0) < 6
         // 一颗食物只能把 0 抬到 2.5，还在"很饿"档：颜色应该从灰青好转一档（不是立刻恢复本色）
         const revivedColor = window.__aq.fishColor(0) !== colorStarved
 

@@ -4,7 +4,7 @@
 
 ![赛博鱼缸](shots/aquarium.png)
 
-`v1.2.0` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
+`v1.2.1` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
 
 1.2 以鱼为本：每条鱼有自己的 SAT；底栏 `SAT AVG` 是整缸平均；右击鱼看单条标签，点 SAT AVG 看整缸状态。
 
@@ -12,7 +12,7 @@
 
 > 不想看代码，只想养鱼：按下面四步走。
 
-1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.2.0-portable.zip`（约 130 MB）。
+1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.2.1-portable.zip`（约 130 MB）。
    - **不要下 `Source code`**，那是源码快照，不能直接玩。
 2. 解压到**纯英文路径**，例如 `D:\CyberAquarium`。
    - 路径里只要有中文（或其它非英文字符），Electron 会直接崩溃；启动器会先弹窗提醒。
@@ -148,7 +148,7 @@ IPC 通道：
 | 很饿 | <15 | ×0.65 | ×2.6 | 常冒 `…`，SAT<5 变 `!`，颜色偏红 |
 | 饿坏 | ≤0.01 | ×0.45 | ×3.0 | 头顶 `!`、贴底打蔫、底栏闪红 |
 
-- 吃一颗鱼食按体长结算：3/4 格 +4~5，5/6 格 +3~4，7 格以上 +2~3；吃完歇 `6~12s`，期间不抢食。
+- 吃一颗鱼食按体长结算：3/4 格 +4~5，5/6 格 +3~4，7 格以上 +2~3；饱鱼吃完歇 `6~12s`，饿鱼休息更短，饿坏可以连着吃。
 - 食欲 = `(1 - SAT/100) × 贪吃系数`；SAT≥99 不吃，SAT<15 全缸都来。
 - 贪吃系数：小丑 1.25 / 好奇 1.0 / 被动 0.95 / 胆小 0.8，再乘个体随机。
 
@@ -247,6 +247,16 @@ IPC 通道：
 ### 1.2 系列 · 以鱼为本
 
 <blockquote>
+
+<details>
+<summary><strong>v1.2.1</strong> · 饿鱼连吃、抢食和菜单撒食</summary>
+
+- 很饿/饿坏时不再犹豫，直接吃；普通饿的开口概率额外 ×1.35。
+- 饿鱼吃完休息大幅缩短（很饿 0.12~0.35s、普通饿 0.7~1.4s），可以连着吃；饱鱼仍是 6~12s。
+- 同一颗鱼食不再被一条鱼独占：多条鱼可以同时盯同一颗，谁先到嘴边谁吃。
+- 菜单「撒一把鱼食」从 6 颗改为 18 颗；手点水面仍是 1~3 颗。
+
+</details>
 
 <details>
 <summary><strong>v1.2.0</strong> · 逐鱼 SAT、鱼状态页、离线饥饿</summary>
