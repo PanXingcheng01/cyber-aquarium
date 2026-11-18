@@ -87,7 +87,8 @@ copy /y "%ROOT%\使用说明.txt" "%PKG%\" >nul
 copy /y "%ROOT%\*.html" "%PKG%\" >nul
 
 echo [5/5] zip ...
-tar -a -c -f "%OUT%" -C "%DIST%" CyberAquarium
+rem UTF-8 文件名：tar 会写 GBK 且不设 UTF-8 标志，改用 Compress-Archive（ZIP bit 11）
+powershell -NoProfile -Command "Compress-Archive -Path '%PKG%' -DestinationPath '%OUT%' -CompressionLevel Optimal -Force"
 if errorlevel 1 (
   echo ZIP FAILED
   pause

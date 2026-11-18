@@ -4,13 +4,13 @@
 
 ![赛博鱼缸](shots/aquarium.png)
 
-`v1.1.2` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
+`v1.1.3` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
 
 ## 下载与上手
 
 > 不想看代码，只想养鱼：按下面四步走。
 
-1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.1.2-portable.zip`（约 130 MB）。
+1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.1.3-portable.zip`（约 130 MB）。
    - **不要下 `Source code`**，那是源码快照，不能直接玩。
 2. 解压到**纯英文路径**，例如 `D:\CyberAquarium`。
    - 路径里只要有中文（或其它非英文字符），Electron 会直接崩溃；启动器会先弹窗提醒。
@@ -33,7 +33,7 @@ cd cyber-aquarium
 2. 不想放在项目里，就设环境变量 `AQ_RUNTIME` 指向别处的 runtime（同样必须纯英文）。
 3. 启动方式：
    - 双击根目录 `赛博鱼缸.exe`（启动器，自动找 `runtime\` 和 `app\` / `cyber-aquarium\`）
-   - `tools\启动赛博鱼缸-调试.cmd`（保留控制台，能看到 Electron 报错）
+   - `tools\launch-debug.cmd`（保留控制台，能看到 Electron 报错）
    - `runtime\electron.exe cyber-aquarium`（直接启动程序本体）
 
 ## 代码结构
@@ -49,8 +49,8 @@ cyber-aquarium/                  # 仓库根
 │       └── app.js               # 模型、step、draw、输入、菜单
 ├── tools/
 │   ├── launcher.cs              # 启动器源码（csc 编译进 赛博鱼缸.exe）
-│   ├── 重新打包.cmd              # 版本注入、runtime 瘦身、打 zip
-│   └── 启动赛博鱼缸-调试.cmd
+│   ├── build.cmd                 # 版本注入、runtime 瘦身、打 zip
+│   └── launch-debug.cmd
 ├── assets/aquarium.ico
 ├── shots/                       # README 截图
 ├── 说明书.html                  # 玩家图文说明
@@ -65,7 +65,7 @@ cyber-aquarium/                  # 仓库根
 | `renderer/app.js` | 整个模拟与绘制：鱼/螃蟹/水草/鱼食/气泡/爱心、`step`、`draw`、输入手势、菜单 DOM |
 | `renderer/style.css` | 透明外壳、辉光、菜单样式 |
 | `tools/launcher.cs` | 启动器：找 runtime 和 app、检查纯英文路径、启动 Electron |
-| `tools/重新打包.cmd` | 版本号注入、runtime 瘦身、打 zip、归档旧版 |
+| `tools/build.cmd` | 版本号注入、runtime 瘦身、打 zip、归档旧版 |
 
 IPC 通道：
 
@@ -262,7 +262,7 @@ runtime\electron.exe cyber-aquarium --fps
 
 ```cmd
 :: 先关掉正在运行的鱼缸，否则 exe 被占用，启动器编译失败
-cmd /c tools\重新打包.cmd build
+cmd /c tools\build.cmd build
 ```
 
 脚本会重新编译启动器、精简 runtime，生成带版本号的 portable zip。
