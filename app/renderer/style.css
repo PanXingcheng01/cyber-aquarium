@@ -45,13 +45,13 @@ body.dark {
   min-width: 124px;
   padding: 4px;
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(6, 22, 26, 0.95), rgba(3, 12, 16, 0.95));
+  background: linear-gradient(180deg, rgba(6, 22, 26, 0.68), rgba(3, 12, 16, 0.56));
   border: 1px solid rgba(110, 249, 255, 0.34);
   box-shadow:
     0 10px 26px rgba(0, 0, 0, 0.55),
     0 0 18px rgba(40, 210, 255, 0.12),
     inset 0 0 0 1px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(7px);
+  backdrop-filter: blur(2px);
   color: #c9fbf6;
   font-size: 11px;
   line-height: 1;
@@ -61,6 +61,41 @@ body.dark {
 
 #menu[hidden] {
   display: none;
+}
+
+#fish-tag {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(110, 249, 255, 0.26);
+  background: rgba(3, 12, 16, 0.9);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  color: #9ffcff;
+  font-size: 10px;
+  line-height: 1.15;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  backdrop-filter: blur(4px);
+}
+
+#fish-tag[hidden] {
+  display: none;
+}
+
+@media (max-width: 380px) {
+  #fish-tag {
+    font-size: 9px;
+    padding: 2px 5px;
+  }
+}
+
+@media (min-width: 480px) {
+  #fish-tag {
+    font-size: 12px;
+    padding: 3px 8px;
+  }
 }
 
 @keyframes aq-pop {
@@ -186,6 +221,80 @@ body.dark {
 #menu::-webkit-scrollbar-thumb {
   background: rgba(110, 249, 255, 0.28);
   border-radius: 3px;
+}
+
+#menu .menu-back {
+  justify-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  margin-bottom: 8px;
+  color: #8fd8ff;
+}
+
+#menu.fish-status-page {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#menu.fish-status-page .menu-back,
+#menu.fish-status-page .fish-status-head {
+  flex: none;
+}
+
+#menu .fish-status-list {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  align-content: stretch;
+  overflow: hidden;
+}
+
+#menu .fish-status-head,
+#menu .fish-status-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 36px;
+  align-items: center;
+  justify-items: center;
+  text-align: center;
+  column-gap: 8px;
+  padding: 4px 6px;
+}
+
+#menu .fish-status-head {
+  padding-top: 2px;
+  padding-bottom: 5px;
+  color: #5f9e9b;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+#menu .fish-status-row {
+  min-height: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#menu .fish-status-row:hover {
+  background: rgba(110, 249, 255, 0.07);
+}
+
+#menu .fish-status-id {
+  color: #77b9b7;
+  font-variant-numeric: tabular-nums;
+}
+
+#menu .fish-status-look {
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+#menu .fish-status-sat {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-height: 330px) {

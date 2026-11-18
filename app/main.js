@@ -29,6 +29,8 @@ const DEFAULT_STATE = {
   satiety: 4,
   fishCount: 3,
   fish: [], // 每条鱼的种类/颜色 profile；旧存档没有，启动时按 fishCount 兼容
+  sandSeed: null, // 沙面纹理种子；旧存档没有时启动抽一次
+  plants: [], // 水草的固定外形；旧存档没有时启动长一次
   alwaysOnTop: true,
   savedAt: Date.now(),
 }
@@ -450,7 +452,7 @@ async function runCapture(target) {
         shy.scare = 0
         shy.x = 20
         shy.y = 8
-        setCursor(19, 8, 0)
+        setCursor(18, 8, 0)
         const shyX0 = shy.x
         window.__aq.stepSim(20)
         const shyFled = shy.x - shyX0 > 1
@@ -581,6 +583,12 @@ async function runCapture(target) {
         const crabPx = toPx(Math.round(crab.x) + 3, Math.round(crab.y))
         window.__aq.clickAt(crabPx.x, crabPx.y)
         const crabPinched = crab.pinch > 0 && M.stats.pinches === pinches0 + 1 && M.stats.feeds === feeds0 && M.pellets.length === 0
+
+        // 这一项只测"不吃鱼食"；先取消逃跑换行，避免它正常躲开
+        crab.escapeRow = false
+        crab.y = crabY0
+        crab.yTarget = crabY0
+        crab.rowT = 999
 
         // 不吃鱼食：鱼食就摆在它脚边，几十帧后一颗不少（先把鱼喂饱，免得鱼来抢）
         const satBackup = M.satiety
@@ -1109,12 +1117,32 @@ function registerIpc() {
           .filter((p) => p && typeof p === 'object')
           .slice(0, 8)
           .map((p) => ({
+            id: Number.isInteger(p.id) ? p.id : 0,
+            species: typeof p.species === 'string' ? p.species : '',
+            bodyId: typeof p.bodyId === 'string' ? p.bodyId : '',
+            body: typeof p.body === 'string' ? p.body.slice(0, 12) : '',
+            color: typeof p.color === 'string' ? p.color : '',
             temper: typeof p.temper === 'string' ? p.temper : '',
             paint: typeof p.paint === 'string' ? p.paint : '',
             accent: typeof p.accent === 'string' ? p.accent : '',
             hue: Number.isFinite(p.hue) ? p.hue : 0,
             greed: Number.isFinite(p.greed) ? p.greed : 1,
+            satiety: Number.isFinite(p.satiety) ? p.satiety : 72,
             rest: p.rest === true,
+          }))
+      }
+      if (Number.isFinite(patch.sandSeed)) state.sandSeed = patch.sandSeed
+      if (Array.isArray(patch.plants)) {
+        state.plants = patch.plants
+          .filter((p) => p && typeof p === 'object')
+          .slice(0, 24)
+          .map((p) => ({
+            x: Number.isFinite(p.x) ? p.x : 0,
+            h: Number.isFinite(p.h) ? p.h : 3,
+            tone: Number.isFinite(p.tone) ? p.tone : 0,
+            amp: Number.isFinite(p.amp) ? p.amp : 2,
+            rate: Number.isFinite(p.rate) ? p.rate : 0.45,
+            bud: p.bud === true,
           }))
       }
     }

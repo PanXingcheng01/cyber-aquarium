@@ -4,13 +4,15 @@
 
 ![赛博鱼缸](shots/aquarium.png)
 
-`v1.1.3` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
+`v1.2.0` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
+
+1.2 以鱼为本：每条鱼有自己的 SAT；底栏 `SAT AVG` 是整缸平均；右击鱼看单条标签，点 SAT AVG 看整缸状态。
 
 ## 下载与上手
 
 > 不想看代码，只想养鱼：按下面四步走。
 
-1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.1.3-portable.zip`（约 130 MB）。
+1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.2.0-portable.zip`（约 130 MB）。
    - **不要下 `Source code`**，那是源码快照，不能直接玩。
 2. 解压到**纯英文路径**，例如 `D:\CyberAquarium`。
    - 路径里只要有中文（或其它非英文字符），Electron 会直接崩溃；启动器会先弹窗提醒。
@@ -48,6 +50,7 @@ cyber-aquarium/                  # 仓库根
 │   └── renderer/
 │       ├── index.html
 │       ├── style.css            # 透明背景、辉光、菜单
+│       ├── fish-data.js         # 品种 / body / 配色 / 体长系数数据
 │       └── app.js               # 模型、step、draw、输入、菜单
 ├── tools/
 │   ├── launcher.cs              # 启动器源码（csc 编译进 赛博鱼缸.exe）
@@ -65,6 +68,7 @@ cyber-aquarium/                  # 仓库根
 | `main.js` | 透明/无边框/置顶窗口、拖动与越界保护、尺寸切换、`state.json` 读写、菜单 IPC、截图与自检 |
 | `preload.js` | `contextBridge` 暴露 `window.aq`：`load/save/dragStart/dragEnd/setSize/setTheme/setTop/openManual/quit` |
 | `renderer/app.js` | 整个模拟与绘制：鱼/螃蟹/水草/鱼食/气泡/爱心、`step`、`draw`、输入手势、菜单 DOM |
+| `renderer/fish-data.js` | 品种、允许的 body 变体、配色样式、`BODY_SIZE` 体长系数；不含逻辑 |
 | `renderer/style.css` | 透明外壳、辉光、菜单样式 |
 | `tools/launcher.cs` | 启动器：找 runtime 和 app、检查纯英文路径、启动 Electron |
 | `tools/build.cmd` | 版本号注入、runtime 瘦身、打 zip、归档旧版 |
@@ -91,16 +95,22 @@ IPC 通道：
   "size": "medium", "theme": "clear",
   "satiety": 72, "fishCount": 3,
   "fish": [
-    { "temper": "clown", "paint": "clown", "accent": "#ffe9a8", "hue": 0, "greed": 1.1, "rest": false }
+    { "id": 1, "species": "clown", "bodyId": "clown-standard", "body": "><(((·>", "color": "#ff5a00", "paint": "clown", "accent": "#ffe9a8", "hue": 0, "greed": 1.1, "satiety": 72, "rest": false }
+  ],
+  "sandSeed": 421,
+  "plants": [
+    { "x": 12.4, "h": 6, "tone": 2, "amp": 2.5, "rate": 0.45, "bud": true }
   ],
   "alwaysOnTop": true, "savedAt": 0
 }
 ```
 
 - 每 5 秒自动保存一次；页面隐藏和 `beforeunload` 时也会保存。
-- 饱食度按真实时间衰减：`100 / (5 * 3600)` 每秒，满 100 约 5 小时归零；启动时按 `savedAt` 补算离线衰减。
+- 每条鱼的饱食度：静止基础消耗 `100 / (5 * 3600)` 每秒，再按实际游速追加；受惊瞬间另扣 0.35。静止满 100 约 5 小时，游得越快掉得越快；启动时按 `savedAt` 逐鱼补算离线衰减，**离线速度是开着的 1/10**（约 2 SAT/小时，100 点约 50 小时）。
 - 首次启动（没有存档）：SAT=4、3 条鱼、medium、透明外壳、置顶。
-- 每条鱼的种类、颜色样式、贪吃程度和睡姿存在 `fish` 里；重启不会换鱼。旧存档没有 `fish` 时按 `fishCount` 随机补一次，之后固定。
+- 每条鱼的种类、颜色样式、贪吃程度、睡姿和当前 SAT 存在 `fish` 里；重启不会换鱼。旧存档没有 `fish` 时按 `fishCount` 随机补一次，之后固定。
+- `sandSeed` / `plants` 保存沙面纹理和水草基础外形；旧存档没有时首次启动随机一次并写回，之后重启保持。摆动相位、鱼/螃蟹的运行时位置和姿态不存，重开后自然不同。只有「换一缸水草」会重新抽沙面、重长水草。
+- `body` / `color` 是显式存档，不再只从 `species` 推导；以后改品种表不会改老鱼的样子。`species` 决定行为，`body` 决定字形，配色字段决定颜色。
 - 窗口位置和尺寸也在这里；删掉文件即恢复默认。
 
 ## 行为模型
@@ -138,7 +148,7 @@ IPC 通道：
 | 很饿 | <15 | ×0.65 | ×2.6 | 常冒 `…`，SAT<5 变 `!`，颜色偏红 |
 | 饿坏 | ≤0.01 | ×0.45 | ×3.0 | 头顶 `!`、贴底打蔫、底栏闪红 |
 
-- 吃一颗鱼食 SAT +1，吃完歇 `6~12s`，期间不抢食。
+- 吃一颗鱼食按体长结算：3/4 格 +4~5，5/6 格 +3~4，7 格以上 +2~3；吃完歇 `6~12s`，期间不抢食。
 - 食欲 = `(1 - SAT/100) × 贪吃系数`；SAT≥99 不吃，SAT<15 全缸都来。
 - 贪吃系数：小丑 1.25 / 好奇 1.0 / 被动 0.95 / 胆小 0.8，再乘个体随机。
 
@@ -151,8 +161,8 @@ IPC 通道：
 | 跟着你 | 15%（光标 12 格内） | 2.0 格/s |
 | 躲开你 | 9%（光标 12 格内） | 3.4 格/s |
 
-- 基本横着走，活动范围 1.5~43.5 格；偶尔极慢地换一行（18~19 行，约每 20~40 秒考虑一次）。
-- 点它 → 夹人（`pinch` 0.75s）→ 横着窜开；它不吃鱼食。
+- 基本横着走，活动范围 1.5~43.5 格；平时约每 20~40 秒才考虑换一行（18~19 行）。
+- 点它 → 夹人（`pinch` 0.75s）→ 横着窜开；**85% 会在这次逃跑过程中快速换到另一行**，15% 不换；它不吃鱼食。
 - 鱼贴着沙面过来时有概率让路（`yieldToFish`）；睡着时概率很低。
 - 逗螃蟹时小丑鱼会退开，不抢戏（`teasingCrab`）。
 
@@ -165,7 +175,9 @@ IPC 通道：
 | 点击螃蟹 | 命中螃蟹 | 夹人 + 闪黄 + 窜开 |
 | 按住拖动 | 位移 ≥4px | 拖动整个窗口（主进程 `setBounds`） |
 | 停在鱼身上 | 静止 ≥ `PET.dwell`（0.45~0.85s） | 抚摸：鱼停下、冒 `♥`；睡着的鱼点一下才醒 |
-| 右键 | `contextmenu` | 打开菜单 |
+| 右击鱼 | 命中鱼身 | 显示 `01 SAT xx%` 跟随标签；4 秒后消失，再右击关闭 |
+| 点击 HUD SAT | 底栏 SAT 区域 | 打开「查看鱼状态」 |
+| 右击空白 | `contextmenu` | 打开菜单 |
 
 ### 碰撞
 
@@ -177,17 +189,18 @@ IPC 通道：
 - 网格 55×22；medium 每格 7×13px，窗口 409×310；small 352×264，large 523×402。
 - 画布保持透明，字符按网格 `put()` 进缓冲区再统一绘制；辉光只作用在鱼的字符上。
 - 水面在水的第一行，第二行留波峰；水面以上是纯透明空气。
-- 底栏左边 `SAT xx%`，右边鱼数；深色模式在画布下铺 `#061417`，画布本身仍透明。
+- 底栏左边 `SAT AVG xx%`（全缸平均，颜色/闪动跟最低鱼），右边 `><> × N`；右键鱼会浮出 `01 SAT xx%` 小标签，4 秒消失；点 SAT 区域或菜单「查看鱼状态」打开无边框鱼列表，点某一行会让对应鱼的外层辉光呼吸几下。
+- 深色模式在画布下铺 `#061417`，画布本身仍透明。
 - 帧率 15fps；空闲时约单核 19%、内存约 340MB（Electron 地板）。
 
 <details>
-<summary>界面截图（主图之外 8 张）</summary>
+<summary>界面截图（主图之外 9 张）</summary>
 
 | | | |
 | --- | --- | --- |
 | ![](shots/transparent.png) | ![](shots/dark.png) | ![](shots/menu.png) |
 | ![](shots/crab.png) | ![](shots/hearts.png) | ![](shots/hungry.png) |
-| ![](shots/appetite-full.png) | ![](shots/appetite-hungry.png) | |
+| ![](shots/appetite-full.png) | ![](shots/appetite-hungry.png) | ![](shots/fish-status.png) |
 
 </details>
 
@@ -197,13 +210,16 @@ IPC 通道：
 
 | 想改 | 位置 |
 | --- | --- |
-| 鱼种、颜色、基础速度 | `renderer/app.js` 的 `KINDS` / `CLOWN` |
+| 鱼种、body 变体、颜色、基础速度 | `renderer/fish-data.js` 的 `SPECIES` / `BODIES` / `LOOKS` |
 | 整体鱼速 | `FISH_SPEED`（0.85） |
-| 鱼的状态权重 / 时长 | `FISH_MODES`（睡眠权重看 `SLEEP_WEIGHT`，体型看 `sleepSizeK()`） |
+| 鱼的状态权重 / 时长 | `FISH_MODES`（睡眠权重看 `SLEEP_WEIGHT`，睡眠时长看 `BODY_SIZE.sleepK`） |
 | 性格阈值与反应 | `stepCursorPull()` |
 | 饥饿阈值 / 游速 / 追食 | `HUNGER` / `HUNGER_SPEED` / `CHASE_SPEED` |
-| 食欲、贪吃、消化 | `APPETITE` / `GREED` / `DIGEST` |
-| 饱食度衰减 | `step()` 里的 `100 / (5 * 3600)` |
+| 食欲、贪吃、消化 | `APPETITE` / `SPECIES[].greed` / `DIGEST` |
+| 一口鱼食的 SAT | `BODY_SIZE.food`（按 body 长度） |
+| 所有跟体长有关的生理参数 | `BODY_SIZE`（`food` / `sleepK` / `dropK` / `glowK`；新增先加这张表） |
+| 饱食度衰减 | `SAT_DRAIN` + `SAT_MOVE_DRAIN`（按实际游速） / `SAT_SCARE_COST` |
+| 离线饱食度 | `OFFLINE_SAT_RATE = 0.1`（开着的 1/10） |
 | 鱼食下沉 / 寿命 / 上限 | `spawnPellet()` / `stepPellets()` |
 | 抚摸门槛 / 爱心 | `PET` / `HEART`（摸够 2.5s 后这条鱼单独冷静 10s） |
 | 螃蟹行为 / 速度 | `CRAB` / `pickCrabMode()` / `stepCrab()` |
@@ -221,12 +237,33 @@ IPC 通道：
 | 窗口 | 352×264 / 409×310 / 523×402 |
 | 整体鱼速 | `FISH_SPEED = 0.85` |
 | 鱼数 | 1~8 |
-| 鱼食 | 下沉 1.6 格/s，寿命 45s（最后 3 秒闪），上限 24 颗 |
-| 饥饿衰减 | 100 / (5×3600) 每秒，约 5 小时归零 |
+| 鱼食 | 下沉 1.6 格/s，寿命 45s（最后 3 秒闪），上限 24 颗；按体长 +2~5 SAT |
+| 饥饿衰减 | 基础 100/(5×3600) 每秒 + 游速消耗 |
 | 存档 | 每 5s |
-| 菜单项 | 10 组（`MENU_ITEMS`，尺寸行展开为 3 个按钮，DOM 共 12 个） |
+| 菜单项 | 11 组（`MENU_ITEMS`，尺寸行展开为 3 个按钮，DOM 共 13 个） |
 
 ## 更新历史
+
+### 1.2 系列 · 以鱼为本
+
+<blockquote>
+
+<details>
+<summary><strong>v1.2.0</strong> · 逐鱼 SAT、鱼状态页、离线饥饿</summary>
+
+- 每条鱼独立 SAT：吃食、消耗、受惊和追食都按鱼自己算；`model.satiety` 只保留为平均兼容口。
+- HUD 改为 `SAT AVG`，数值是整缸平均，颜色/闪动跟最饿的鱼；右下角显示 `><> × N`。
+- 右击鱼浮出 `01 SAT xx%` 标签，跟随 4 秒；点 SAT 区域或菜单「查看鱼状态」打开无边框表格，编号/外观/SAT 居中对齐。
+- 鱼状态页固定 8 行位：8 条鱼填满，鱼少时行高一致；点某一行不关菜单，对应鱼的外层辉光呼吸几下。
+- 鱼数据拆到 `renderer/fish-data.js`：species 决定行为，body 变体按 species 限定，颜色独立；稳定 ID，小丑鱼固定 01。
+- `BODY_SIZE` 统一体长参数：一口鱼食、睡眠时长、倒水下坠、辉光范围；小鱼吃食收益更高，大鱼更低。
+- 离线也消耗 SAT，但速度为开着的 1/10；水草基础外形和沙面种子写入存档，摆动相位/鱼蟹运行时状态不存。
+- 菜单背景半透明；小尺寸菜单高度会随尺寸失效重算，不再在退出下面留空。
+- 螃蟹被点后夹人、横窜，约 85% 在逃跑过程中快速换到另一行。
+
+</details>
+
+</blockquote>
 
 ### 1.1 系列 · 交互与鱼缸手感
 
