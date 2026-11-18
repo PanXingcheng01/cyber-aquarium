@@ -22,7 +22,7 @@
 
 ## 开发环境
 
-程序本体在 `cyber-aquarium/`，Electron 运行时单独放——**exe 所在整条路径必须是纯英文**。
+程序本体在 `app/`，Electron 运行时单独放——**exe 所在整条路径必须是纯英文**。
 
 ```bat
 git clone https://github.com/PanXingcheng01/cyber-aquarium.git
@@ -32,15 +32,15 @@ cd cyber-aquarium
 1. 下载 Electron 45.x win32-x64，解压到 `runtime\`（能看到 `runtime\electron.exe` 即正确）。该目录约 285 MB，已在 `.gitignore` 中排除。
 2. 不想放在项目里，就设环境变量 `AQ_RUNTIME` 指向别处的 runtime（同样必须纯英文）。
 3. 启动方式：
-   - 双击根目录 `赛博鱼缸.exe`（启动器，自动找 `runtime\` 和 `app\` / `cyber-aquarium\`）
+   - 双击根目录 `赛博鱼缸.exe`（启动器，自动找 `runtime\` 和 `app\`）
    - `tools\launch-debug.cmd`（保留控制台，能看到 Electron 报错）
-   - `runtime\electron.exe cyber-aquarium`（直接启动程序本体）
+   - `runtime\electron.exe app`（直接启动程序本体）
 
 ## 代码结构
 
 ```text
 cyber-aquarium/                  # 仓库根
-├── cyber-aquarium/              # 程序本体（打包后改名为 app/）
+├── app/                          # 程序本体（与发布包 app/ 同名）
 │   ├── main.js                  # 主进程：窗口、拖动、尺寸、存档、IPC、截图/自检
 │   ├── preload.js               # contextBridge → window.aq
 │   └── renderer/
@@ -225,15 +225,15 @@ IPC 通道：
 
 ```cmd
 :: 交互回归（当前 44 项，必须全绿；--selftest 必须配合 --capture 才会执行）
-runtime\electron.exe cyber-aquarium --selftest --capture=shots\test.png
+runtime\electron.exe app --selftest --capture=shots\test.png
 
 :: 截图（保留 alpha；--force-device-scale-factor=1 让输出稳定）
-runtime\electron.exe --force-device-scale-factor=1 cyber-aquarium --size=medium --dark --rescape --capture=shots\tmp.png
+runtime\electron.exe --force-device-scale-factor=1 app --size=medium --dark --rescape --capture=shots\tmp.png
 
 :: 字体/墨迹、字符网格、帧率
-runtime\electron.exe cyber-aquarium --probe
-runtime\electron.exe cyber-aquarium --dump
-runtime\electron.exe cyber-aquarium --fps
+runtime\electron.exe app --probe
+runtime\electron.exe app --dump
+runtime\electron.exe app --fps
 ```
 
 > `--selftest` 写在截图流程里：不带 `--capture` 时它不会执行，窗口会一直开着。要跑回归就照上面的命令带一个 `--capture`。
@@ -269,7 +269,7 @@ cmd /c tools\build.cmd build
 
 ### 版本更新规则
 
-- 版本号**唯一来源**：`cyber-aquarium/package.json` 的 `version`。zip 名、`赛博鱼缸.exe` 文件属性、Release tag 自动一致，不要手改 exe。
+- 版本号**唯一来源**：`app/package.json` 的 `version`。zip 名、`赛博鱼缸.exe` 文件属性、Release tag 自动一致，不要手改 exe。
 - 级别：`z` = 只调手感 / 修 bug / 改文案；`y` = 加了能感知的新功能；`x` = 整体重做 / 不兼容。
 
 | 变化 | 页面 | 说明 |

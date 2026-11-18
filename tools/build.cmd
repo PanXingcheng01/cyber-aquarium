@@ -10,7 +10,7 @@ rem   CyberAquarium\
 rem     赛博鱼缸.exe      launcher compiled here from tools\launcher.cs (icon + version embedded)
 rem     使用说明.txt / 说明书.html
 rem     runtime\          slimmed Electron runtime
-rem     app\              the app (copied from cyber-aquarium\)
+rem     app\              the app (source: app\)
 rem
 rem Slimming (tested, keeps everything working):
 rem   - locales: only zh-CN / en-US / zh-TW           (-47 MB)
@@ -35,7 +35,7 @@ if not exist "%RUNTIME%\electron.exe" (
 
 rem ---- version comes from the app's package.json ----
 set "VER="
-for /f "tokens=2 delims=:" %%v in ('findstr /c:"\"version\"" "%ROOT%\cyber-aquarium\package.json"') do set "VER=%%v"
+for /f "tokens=2 delims=:" %%v in ('findstr /c:"\"version\"" "%ROOT%\app\package.json"') do set "VER=%%v"
 set "VER=%VER: =%"
 set "VER=%VER:"=%"
 set "VER=%VER:,=%"
@@ -58,7 +58,7 @@ del /f /q "%PKG%\runtime\dxcompiler.dll" 2>nul
 del /f /q "%PKG%\runtime\electron_wer.dll" 2>nul
 
 echo [3/5] app ...
-robocopy "%ROOT%\cyber-aquarium" "%PKG%\app" /E /PURGE /NFL /NDL /NJH /NJS /NP >nul
+robocopy "%ROOT%\app" "%PKG%\app" /E /PURGE /NFL /NDL /NJH /NJS /NP >nul
 
 echo [4/5] launcher + docs ...
 rem 重新编译启动器，把版本号写进文件属性（右键 - 属性 - 详细信息能看到）

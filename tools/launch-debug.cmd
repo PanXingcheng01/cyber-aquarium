@@ -1,6 +1,6 @@
 @echo off
 rem Debug launcher: keeps the console so startup errors stay visible.
-rem Normal use: double-click 启动赛博鱼缸.vbs in the project root.
+rem Normal use: double-click 赛博鱼缸.exe in the project root.
 setlocal
 cd /d "%~dp0.."
 if not exist "runtime\electron.exe" (
@@ -9,4 +9,4 @@ if not exist "runtime\electron.exe" (
   pause
   exit /b 1
 )
-start "" "%CD%\runtime\electron.exe" "%CD%\cyber-aquarium"
+start "" "%CD%\runtime\electron.exe" "%CD%\app"
