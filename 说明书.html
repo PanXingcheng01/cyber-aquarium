@@ -206,16 +206,18 @@
 <p class="kv">小尺寸下菜单会自动收紧行高（窗口实在装不下时菜单内部还能滚动），不会把「退出」挡在窗口外面。</p>
 
 <h2 id="save">10 · 存档和常见问题</h2>
-<p>位置、尺寸、外壳、饱食度、鱼数都存在这里：</p>
+<p>位置、尺寸、外壳、饱食度、鱼数，以及每条鱼的种类/颜色/睡姿都存在这里：</p>
 <p><code>%APPDATA%\cyber-aquarium\state.json</code></p>
+<p class="kv">找法：按 <code>Win+R</code>，输入 <code>%APPDATA%\cyber-aquarium</code> 回车；或在资源管理器地址栏粘贴这一行。完整示例：<code>C:\Users\你的用户名\AppData\Roaming\cyber-aquarium\state.json</code>。</p>
 <p class="kv">想把它恢复成刚装好的样子：先退出鱼缸，删掉这个文件，再打开。</p>
 <table>
   <tr><th>遇到什么</th><th>怎么办</th></tr>
-  <tr><td>双击没反应</td><td>用 <code>tools\启动赛博鱼缸-调试.cmd</code> 打开，能看到具体报错</td></tr>
+  <tr><td>双击没反应</td><td>先确认解压完整、路径是纯英文；还不行就重新解压一次</td></tr>
   <tr><td>提示找不到运行时</td><td>压缩包没解压完整，重新解压一次</td></tr>
   <tr><td>提示路径里有中文</td><td>把整个文件夹搬到纯英文路径（例如 <code>D:\CyberAquarium</code>）</td></tr>
   <tr><td>杀毒软件报警</td><td>是 Electron 的通用误报，允许即可</td></tr>
   <tr><td>桌面上看不见它</td><td>可能被挪到屏幕外了：删掉 <code>state.json</code> 再打开</td></tr>
+  <tr><td>更新版本</td><td>解压新包，覆盖 <code>app\</code>、<code>赛博鱼缸.exe</code>、<code>使用说明.txt</code>、<code>说明书.html</code>；<code>runtime\</code> 没换 Electron 可保留；存档不受影响</td></tr>
 </table>
 
 <footer>

@@ -18,6 +18,8 @@
    - 第一次启动 SAT 只有 4%，右键 →「撒一把鱼食」；想从头养就删掉 `%APPDATA%\cyber-aquarium\state.json`。
 4. 玩法看包里的 **`说明书.html`**（图文、带目录，双击即开）和 **`使用说明.txt`**（一页纸 / FAQ）。
 
+> 更新已有安装：覆盖 `app/`、`赛博鱼缸.exe`、`使用说明.txt`、`说明书.html`；`runtime/` 没换 Electron 时可以保留。存档在 `%APPDATA%\cyber-aquarium`，不会被覆盖。
+
 系统要求：Windows 10 / 11（64 位）；不用装 Node、不用联网、不需要管理员权限。程序没有数字签名，首次运行 SmartScreen 提示时选「更多信息 → 仍要运行」。
 
 ## 开发环境
@@ -79,6 +81,9 @@ IPC 通道：
 ## 运行与存档
 
 存档在 `%APPDATA%\cyber-aquarium\state.json`：
+
+- 找法：`Win+R` → 输入 `%APPDATA%\cyber-aquarium` → 回车；或在资源管理器地址栏粘贴这一行。
+- 完整示例：`C:\Users\你的用户名\AppData\Roaming\cyber-aquarium\state.json`。
 
 ```json
 {
@@ -223,10 +228,11 @@ IPC 通道：
 
 ## 更新历史
 
-<details>
-<summary><strong>1.1 系列</strong> · 交互与鱼缸手感</summary>
+### 1.1 系列 · 交互与鱼缸手感
 
 <!-- 新版本加在 1.1 组最上面，v1.1.x 往上叠加；1.0 单独归档。 -->
+
+<blockquote>
 
 <details>
 <summary><strong>v1.1.3</strong> · 解压文件名修复、源码目录统一</summary>
@@ -234,6 +240,7 @@ IPC 通道：
 - 打包从 Windows `tar -a` 改为 PowerShell `Compress-Archive`：zip 条目名按 UTF-8 写入，并设置 ZIP 的 UTF-8 标志（bit 11），修复部分解压工具把 `赛博鱼缸.exe` / `使用说明.txt` / `说明书.html` 显示成乱码的问题。
 - 源码目录 `cyber-aquarium/` 改为 `app/`，与发布包内的 `app/` 对齐；`tools/build.cmd`、`tools/launch-debug.cmd` 和文档里的路径同步。
 - `tools/重新打包.cmd` / `tools/启动赛博鱼缸-调试.cmd` 改为英文文件名，减少 cmd 和路径编码问题。
+- 使用说明补了存档路径的查找方式；更新步骤改为覆盖 `app/`、`赛博鱼缸.exe`、`使用说明.txt`、`说明书.html`，`runtime/` 可保留。
 - 游戏逻辑不变。
 
 </details>
@@ -272,10 +279,14 @@ IPC 通道：
 
 </details>
 
-</details>
+</blockquote>
+
+### 1.0 系列 · 第一缸鱼
+
+<blockquote>
 
 <details>
-<summary><strong>v1.0.0</strong> · 第一缸鱼，2026-11-17（永久保留）</summary>
+<summary><strong>v1.0.0</strong> · 2026-11-17（永久保留）</summary>
 
 - 最初的想法：在 Windows 桌面上放一块透明的玻璃，只看得见字符和那圈辉光。Electron 45.3.2 + Canvas 2D，55×22 个字符格、15fps。
 - 鱼会自己过日子：游、发呆、突然窜一下、睡觉；保底一条小丑鱼，最多 8 条。
@@ -285,6 +296,8 @@ IPC 通道：
 - 当时还是便携 zip + `启动赛博鱼缸.vbs` 启动，后来才换成内嵌图标的 `赛博鱼缸.exe`；v1.0.0 的 Release 永久保留。
 
 </details>
+
+</blockquote>
 
 ## 开发自检
 
