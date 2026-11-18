@@ -108,6 +108,9 @@ const FISH_MODES = [
   { mode: 'sleep', weight: 2, min: 7, max: 16 },
 ]
 
+// 睡眠概率按性格：胆小的最警觉、小丑鱼最黏人；大鱼睡得更久（见 sleepSizeK）
+const SLEEP_WEIGHT = { shy: 0.8, still: 1.8, calm: 2.2, clown: 1.2 }
+
 // 水草的色调（形状/摆幅每株单独随机，靠形态做变化比换字符靠谱：
 // `/ \ ~` 这类斜向字符在一行一格的茎上会排成"电线杆"）
 const PLANT_TONES = [
@@ -117,7 +120,7 @@ const PLANT_TONES = [
   { color: '#2fa9a0', dim: '#1b5f5c' },
 ]
 
-// 沙面上的小螃蟹：横着走，不长个儿，只在沙堆那一行活动。
+// 沙面上的小螃蟹：基本横着走，偶尔在 18~19 行之间慢慢换一行。
 // 心情随机切换：跟着光标跑 / 被吓着躲开 / 自己左晃右晃；点它会夹你一下，鱼食一口不动。
 const CRAB = {
   y: SEABED_ROW - 2, // 18：身子在这儿，下面两条脚 v 落在第 19 行的沙线上，钳子抬在第 17 行
@@ -162,7 +165,7 @@ const model = {
   plants: [],
   sandPuffs: [],
   hearts: [],
-  pet: { fish: null, time: 0, cool: 0 },
+  pet: { fish: null, time: 0 },
   sandSeed: 1, // 沙面纹理种子（启动和换草时重新抽）
   surfaceCenter: COLS / 2, // 水面波纹的中心（倒水点）
   pearlT: 0, // 水草冒珍珠泡的剩余时间
@@ -172,7 +175,7 @@ const model = {
   cursor: { x: -1, y: -1, inside: false, stamp: 0 },
   t: 0,
   menuOpen: false,
-  crab: { x: 24, y: CRAB.y, dir: 1, mode: 'wander', modeT: 2.5, pinch: 0, pinchFrom: 0, walk: 0, speed: 0, stride: 0, puffs: 1, dodgeDir: 0, exciteT: 0 },
+  crab: { x: 24, y: CRAB.y, yTarget: CRAB.y, rowT: 25, dir: 1, mode: 'wander', modeT: 2.5, pinch: 0, pinchFrom: 0, walk: 0, speed: 0, stride: 0, puffs: 1, dodgeDir: 0, exciteT: 0 },
   stats: { dragStarts: 0, dragEnds: 0, feeds: 0, scares: 0, paints: 0, pinches: 0, yields: 0, pets: 0 },
 }
 
@@ -248,7 +251,6 @@ function makeFish(spec) {
     think: rand(0.3, 2.2),
     seed: rand(0, 6.28),
     scare: 0,
-    fleeX: 0,
     trail: 0,
     emote: '',
     emoteT: rand(2, 5),
@@ -264,6 +266,7 @@ function makeFish(spec) {
     scatterX: null, // 这条鱼落水后要冲去的横向位置
     scatterY: null,
     outT: 0, // 落地后朝外走的剩余时间
+    returning: false, // 胆小鱼受惊穿出缸外后，正在游回来
     bite: rand(-1.2, 1.2),
     bumpT: 0,
     bumpDir: 0,
@@ -279,10 +282,43 @@ function makeFish(spec) {
   }
 }
 
-function addFish(clown) {
+function addFish(type) {
   if (model.fish.length >= 8) return false
-  model.fish.push(makeFish(clown ? CLOWN : null))
+  if (type && typeof type === 'object') {
+    model.fish.push(makeFishFromProfile(type))
+    return true
+  }
+  const kind = type === 'clown' ? CLOWN : typeof type === 'string' ? KINDS.find((k) => k.temper === type) : null
+  model.fish.push(makeFish(kind || null))
   return true
+}
+
+const FISH_PAINTS = new Set(['clown', 'duo', 'rainbow', 'mono'])
+
+/** 存档里只留身份信息，不存位置/情绪这些临时状态 */
+function fishProfile(f) {
+  return {
+    temper: f.temper,
+    paint: f.paint,
+    accent: f.accent,
+    hue: f.hue,
+    greed: f.greed,
+    rest: f.rest,
+  }
+}
+
+function makeFishFromProfile(profile) {
+  const p = profile && typeof profile === 'object' ? profile : {}
+  const kind = p.temper === 'clown' ? CLOWN : KINDS.find((k) => k.temper === p.temper)
+  const f = makeFish(kind || null)
+  if (typeof p.paint === 'string' && FISH_PAINTS.has(p.paint)) f.paint = p.paint
+  if (typeof p.accent === 'string' && /^#[0-9a-f]{6}$/i.test(p.accent)) f.accent = p.accent
+  const hue = Number(p.hue)
+  if (Number.isFinite(hue)) f.hue = ((Math.round(hue) % RAINBOW.length) + RAINBOW.length) % RAINBOW.length
+  const greed = Number(p.greed)
+  if (Number.isFinite(greed)) f.greed = clamp(greed, 0.5, 2)
+  if (typeof p.rest === 'boolean') f.rest = p.rest
+  return f
 }
 
 function spawnPellet(x, y) {
@@ -389,13 +425,13 @@ function stepBumps(dt) {
   }
   for (let i = 0; i < fish.length; i++) {
     const a = fish[i]
-    if (a.bumpCool > 0 || a.scare > 0 || a.petT > 0) continue
+    if (a.bumpCool > 0 || a.scare > 0 || a.petT > 0 || a.mode === 'sleep') continue
     const ax = a.x + a.body.length / 2
 
     // 鱼 × 鱼
     for (let j = i + 1; j < fish.length; j++) {
       const b = fish[j]
-      if (b.bumpCool > 0 || b.scare > 0 || b.petT > 0) continue
+      if (b.bumpCool > 0 || b.scare > 0 || b.petT > 0 || b.mode === 'sleep') continue
       if (Math.abs(a.y - b.y) > 0.9) continue
       const bx = b.x + b.body.length / 2
       const reach = (a.body.length + b.body.length) / 4
@@ -416,7 +452,7 @@ function stepBumps(dt) {
     // 鱼 × 螃蟹：螃蟹在沙面上，鱼贴过去会被它挡一下（往上让开）
     const crab = model.crab
     const crabCx = crab.x + CRAB.w / 2
-    if (a.y > CRAB.y - 1.8 && Math.abs(ax - crabCx) < CRAB.w / 2 + 1.2) {
+    if (a.y > crab.y - 1.8 && Math.abs(ax - crabCx) < CRAB.w / 2 + 1.2) {
       if (Math.random() < dt * 4) {
         a.bumpT = 0.6
         a.bumpDir = -1
@@ -446,7 +482,6 @@ function stepHearts(dt) {
 function stepPetting(dt) {
   const cur = model.cursor
   const pet = model.pet
-  pet.cool = Math.max(0, pet.cool - dt)
   if (!cur.inside) {
     pet.fish = null
     pet.time = 0
@@ -454,7 +489,7 @@ function stepPetting(dt) {
   }
   const f = fishAt(cur.x, cur.y)
   // 睡着的鱼摸不动：只有点一下才能叫醒（点击走的是 scareFish，不受这里影响）
-  if (!f || f.mode === 'sleep' || f.scare > 0 || pet.cool > 0 || f.petCool > 0) {
+  if (!f || f.mode === 'sleep' || f.scare > 0 || f.petCool > 0) {
     pet.fish = null
     pet.time = 0
     return
@@ -494,7 +529,7 @@ function stepPetting(dt) {
   }
 
   if (pet.time >= PET.maxTime) {
-    pet.cool = PET.cool
+    f.petCool = PET.cool
     pet.fish = null
     pet.time = 0
     f.petT = 0
@@ -566,6 +601,23 @@ function stepFish(f, dt) {
     return
   }
 
+  // 胆小鱼受惊穿出缸外后：从墙外慢慢游回来，进去后再交回普通游动
+  if (f.returning) {
+    const minX = 0
+    const maxX = COLS - f.body.length
+    f.dir = f.x < minX ? 1 : -1
+    f.x += f.dir * f.base * 2.6 * dt
+    f.y += Math.sin(model.t * 3.2 + f.seed) * 0.25 * dt
+    f.y = clamp(f.y, WATER_TOP + 1.6, WATER_BOTTOM - 0.2)
+    if (f.x >= minX && f.x <= maxX) {
+      f.returning = false
+      f.mode = 'cruise'
+      f.modeT = rand(2, 4)
+      f.think = 0
+    }
+    return
+  }
+
   // 被撞了一下：慢慢换个深度错开，速度也慢下来（不闪白、不窜）
   if (f.bumpT > 0) {
     f.y += (f.bumpDir || 1) * 1.15 * dt
@@ -596,10 +648,9 @@ function stepFish(f, dt) {
     }
   }
 
-  // 受惊：朝反方向窜一小段
+  // 受惊：顺着当前朝向往前冲（不是按点击方向决定）
   if (f.scare > 0) {
     f.scare -= dt
-    f.dir = f.fleeX >= f.x ? -1 : 1
     f.x += f.dir * f.base * 3.2 * dt
     f.y += Math.sin(model.t * 9 + f.seed) * 1.4 * dt
     f.trail -= dt
@@ -607,7 +658,23 @@ function stepFish(f, dt) {
       f.trail = 0.06
       spawnBubble(fishMouth(f), f.y - 0.2)
     }
-    clampFish(f)
+    // 撞到左右边界就反弹（胆小鱼例外，见下）：否则它会贴着看不见的墙一直闪、不动
+    if (f.temper === 'shy') {
+      // 胆小鱼受惊可以直接游出缸外消失；惊吓结束后进入 returning 再游回来
+      f.y = clamp(f.y, WATER_TOP + 1.6, WATER_BOTTOM - 0.2)
+      if (f.scare <= 0 && (f.x < 0 || f.x > COLS - f.body.length)) f.returning = true
+    } else {
+      const minX = 0
+      const maxX = COLS - f.body.length
+      if (f.x <= minX) {
+        f.x = minX
+        f.dir = 1
+      } else if (f.x >= maxX) {
+        f.x = maxX
+        f.dir = -1
+      }
+      clampFish(f)
+    }
     return
   }
 
@@ -640,9 +707,10 @@ function stepFish(f, dt) {
   if (f.modeT <= 0) {
     // 兴奋期只挑"游"和"窜"，不会发呆也不会睡着
     const pBurst = f.exciteT > 0 ? (f.exciteMax - f.exciteT < EXCITE_HOT ? 0.55 : 0.35) : 0
-    f.mode = f.exciteT > 0 ? (Math.random() < pBurst ? 'burst' : 'cruise') : pickMode()
+    f.mode = f.exciteT > 0 ? (Math.random() < pBurst ? 'burst' : 'cruise') : pickMode(f)
     const def = FISH_MODES.find((m) => m.mode === f.mode)
-    f.modeT = rand(def.min, def.max)
+    const baseT = rand(def.min, def.max)
+    f.modeT = f.mode === 'sleep' ? baseT * sleepSizeK(f) : baseT
     if (f.mode === 'sleep') {
       // 睡在水层里的保持当前深度（靠浮力和鳍稳住），贴底睡法的才往沙面靠
       f.sleepY = f.rest ? SEABED_ROW - 1.2 : clamp(f.y, WATER_TOP + 2, WATER_BOTTOM - 0.6)
@@ -704,8 +772,8 @@ function stepFish(f, dt) {
   }
   const speed = (f.mode === 'burst' ? f.base * 2.9 : f.base) * hungerK * exciteK
   f.x += f.dir * speed * dt
-  const minX = 1.25
-  const maxX = COLS - 2 - f.body.length
+  const minX = 0
+  const maxX = COLS - f.body.length
   if (f.x <= minX) {
     f.x = minX
     f.dir = 1
@@ -735,6 +803,11 @@ function stepFish(f, dt) {
 function stepCursorPull(f, dt) {
   const cur = model.cursor
   if (!cur.inside) {
+    f.orbit = 0
+    return false
+  }
+  // 睡着时忽略鼠标：只有点击/喂食能叫醒
+  if (f.mode === 'sleep') {
     f.orbit = 0
     return false
   }
@@ -813,7 +886,7 @@ function stepCursorPull(f, dt) {
     const err = clamp((r - 2.2) * 1.0, -1.6, 1.6)
     f.x += (tx * f.base * 1.3 - ux * err * 3.0) * dt
     f.y += (ty * f.base * 0.7 - uy * err * 2.2) * dt
-    f.x = clamp(f.x, 1.25, COLS - 2 - f.body.length)
+    f.x = clamp(f.x, 0, COLS - f.body.length)
     f.dir = tx >= 0 ? 1 : -1
     f.mode = 'cruise'
     f.modeT = Math.max(f.modeT, 2)
@@ -834,18 +907,27 @@ function stepCursorPull(f, dt) {
   return true
 }
 
-function pickMode() {
+function pickMode(f) {
   let total = 0
-  for (const m of FISH_MODES) total += m.weight
+  for (const m of FISH_MODES) {
+    total += m.mode === 'sleep' && f ? (SLEEP_WEIGHT[f.temper] ?? m.weight) : m.weight
+  }
   let r = Math.random() * total
   for (const m of FISH_MODES) {
-    r -= m.weight
+    const w = m.mode === 'sleep' && f ? (SLEEP_WEIGHT[f.temper] ?? m.weight) : m.weight
+    r -= w
     if (r <= 0) return m.mode
   }
   return 'cruise'
 }
 
+/** 大鱼睡得更久：3 格 0.7×，7 格 1.1× */
+function sleepSizeK(f) {
+  return clamp(0.7 + (f.body.length - 3) * 0.1, 0.6, 1.3)
+}
+
 function clampFish(f) {
+  f.x = clamp(f.x, 0, COLS - f.body.length)
   f.y = clamp(f.y, WATER_TOP + 1.6, WATER_BOTTOM - 0.2)
 }
 
@@ -898,6 +980,7 @@ function pourAll() {
     const off = rand(-4, 4)
     f.x = clamp(cx + off, 1.5, COLS - 3 - f.body.length)
     f.y = WATER_TOP + rand(0.2, 1.2)
+    f.returning = false
     f.dropY = rand(5, 16)
     // 越小的鱼阻力越大，沉得越慢：3 格的身子只有 7 格鱼的一半多
     const sizeK = clamp(0.55 + (f.body.length - 3) * 0.13, 0.5, 1.15)
@@ -932,6 +1015,9 @@ function pourAll() {
   crab.modeT = rand(2, 3)
   crab.pinch = 0
   crab.exciteT = 0
+  crab.y = CRAB.y
+  crab.yTarget = CRAB.y
+  crab.rowT = rand(20, 40)
   crab.dir = Math.random() < 0.5 ? -1 : 1
 }
 function stirWater(power = 1) {
@@ -995,7 +1081,7 @@ function teasingCrab() {
   const cur = model.cursor
   if (!cur.inside) return false
   const cx = crab.x + CRAB.w / 2
-  return Math.abs(cur.x - cx) <= 7 && cur.y >= CRAB.y - 3
+  return Math.abs(cur.x - cx) <= 7 && cur.y >= crab.y - 3
 }
 
 /**
@@ -1027,7 +1113,7 @@ function yieldToFish(dt, cx) {
   if (crab.mode === 'dodge' || crab.pinch > 0) return
   for (const f of model.fish) {
     if (f.mode === 'sleep') continue
-    if (f.y < CRAB.y - 2.2) continue // 只在意贴着沙面的鱼
+    if (f.y < crab.y - 2.2) continue // 只在意贴着沙面的鱼
     const dx = f.x + f.body.length / 2 - cx
     if (Math.abs(dx) > 5.5) continue
     const p = crab.mode === 'sleep' ? dt * 0.18 : dt * 2.2
@@ -1046,6 +1132,18 @@ function stepCrab(dt) {
   crab.modeT -= dt
   if (crab.exciteT > 0) crab.exciteT = Math.max(0, crab.exciteT - dt)
   if (crab.pinch > 0) crab.pinch = Math.max(0, crab.pinch - dt)
+
+  // 极慢换行：20~40 秒才考虑一次；睡觉/夹人时不换
+  if (crab.mode !== 'sleep' && crab.pinch <= 0) {
+    crab.rowT -= dt
+    if (crab.rowT <= 0) {
+      crab.rowT = rand(20, 40)
+      crab.yTarget = crab.yTarget === CRAB.y ? CRAB.y + 1 : CRAB.y
+    }
+    const dy = crab.yTarget - crab.y
+    if (Math.abs(dy) > 0.01) crab.y += Math.sign(dy) * Math.min(Math.abs(dy), 0.25 * dt)
+    crab.y = clamp(crab.y, CRAB.y, CRAB.y + 1)
+  }
 
   if (crab.modeT <= 0) {
     const next = pickCrabMode(cx)
@@ -1082,14 +1180,16 @@ function stepCrab(dt) {
     crab.stride += Math.abs(vx) * dt * 2.4
     crab.puffs -= Math.abs(vx) * dt
     if (crab.puffs <= 0) {
-      crab.puffs = rand(0.55, 1.2)
-      model.sandPuffs.push({
-        x: cx + rand(-2.4, 2.4),
-        y: CRAB.y + 1.5,
-        vx: rand(-0.7, 0.7),
-        age: 0,
-      })
-      if (model.sandPuffs.length > 18) model.sandPuffs.shift()
+      crab.puffs = rand(0.35, 0.6)
+      for (let k = 0; k < 2; k++) {
+        model.sandPuffs.push({
+          x: cx + rand(-2.4, 2.4),
+          y: Math.min(crab.y + 1.5, SEABED_ROW - 0.5),
+          vx: rand(-1.0, 1.0),
+          age: 0,
+        })
+      }
+      while (model.sandPuffs.length > 30) model.sandPuffs.shift()
     }
   }
   // 画脚用：走路时按这个速度换踏步的节奏
@@ -1112,7 +1212,7 @@ function stepSandPuffs(dt) {
     p.age += dt
     p.y -= dt * 0.3
     p.x += p.vx * dt
-    if (p.age > 1.1) model.sandPuffs.splice(i, 1)
+    if (p.age > 1.3) model.sandPuffs.splice(i, 1)
   }
 }
 
@@ -1135,14 +1235,15 @@ function pinchCrab(cell) {
   crab.modeT = rand(1.1, 1.8)
   crab.dir = cell.c < crab.x + CRAB.w / 2 ? 1 : -1
   model.stats.pinches++
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 8; i++) {
     model.sandPuffs.push({
       x: crab.x + CRAB.w / 2 + rand(-1.6, 1.6),
-      y: CRAB.y + 1.5,
+      y: Math.min(crab.y + 1.5, SEABED_ROW - 0.5),
       vx: rand(-1.2, 1.2),
       age: 0,
     })
   }
+  while (model.sandPuffs.length > 30) model.sandPuffs.shift()
   return true
 }
 
@@ -1209,8 +1310,14 @@ function fishAt(c, r) {
 
 function scareFish(f, cell) {
   f.scare = 1.1
-  f.fleeX = cell.c
   f.think = 0.2
+  f.returning = false
+  // 点睡着的鱼 = 叫醒：否则 scare 结束后 mode 还是 sleep，又会睡回去
+  if (f.mode === 'sleep') {
+    f.mode = 'cruise'
+    f.modeT = rand(3, 6)
+    f.sleepY = null
+  }
   model.stats.scares++
   for (let i = 0; i < 3; i++) spawnBubble(fishMouth(f) + rand(-0.6, 0.6), f.y - 0.2)
 }
@@ -1228,7 +1335,8 @@ function compose() {
   drawPlants()
 
   for (const p of model.pellets) {
-    const fade = p.age > 20 && Math.floor(model.t * 6) % 2 === 0
+    // 消失前 3 秒才闪，不要从第 20 秒闪到 45 秒
+    const fade = p.age > 42 && Math.floor(model.t * 4) % 2 === 0
     put(p.x, p.y, fade ? '·' : '*', P.pellet)
   }
 
@@ -1521,7 +1629,8 @@ function drawFrame() {
  */
 function drawSand() {
   const x0 = layout.pad + 1
-  const x1 = layout.pad + (COLS - 1) * layout.cellW
+  // 左边从首格内侧起，右边画到末格右内侧：两边离框都约 6~7px
+  const x1 = layout.pad + COLS * layout.cellW - 1
   const baseY = layout.pad + 19 * layout.cellH
   const bottom = layout.pad + HUD_ROW * layout.cellH
 
@@ -1665,11 +1774,11 @@ function paint() {
   clearGrid()
   drawTankBackdrop()
   compose()
-  drawFrame()
   drawSand()
   drawFishGlow()
   drawCrabGlow()
   drawGrid()
+  drawFrame() // 最后画边框：鱼游出缸时从框线后面消失，而不是盖在框线上
   const ms = performance.now() - t0
   model.stats.paintMs = model.stats.paintMs ? model.stats.paintMs * 0.9 + ms * 0.1 : ms
 }
@@ -1718,7 +1827,7 @@ function cellAt(px, py) {
 
 function updateHover(pt) {
   const cell = cellAt(pt.x, pt.y)
-  const inWater = cell.c >= 1 && cell.c <= COLS - 2 && cell.r >= WATER_TOP && cell.r <= WATER_BOTTOM
+  const inWater = cell.c >= 0 && cell.c <= COLS - 1 && cell.r >= WATER_TOP && cell.r <= WATER_BOTTOM
   model.cursor.x = cell.c
   model.cursor.y = cell.r
   model.cursor.inside = inWater
@@ -2031,6 +2140,8 @@ document.addEventListener(
   'pointerdown',
   (e) => {
     if (!model.menuOpen) return
+    // 右键交给 contextmenu 做开关；只让左键负责“点外面收起”
+    if (e.button !== 0) return
     if (e.target && e.target.closest && e.target.closest('#menu')) return
     closeMenu()
     suppressPointer = true
@@ -2062,6 +2173,7 @@ function save() {
   window.aq.save({
     satiety: Math.round(model.satiety * 10) / 10,
     fishCount: model.fish.length,
+    fish: model.fish.map(fishProfile),
   })
 }
 
@@ -2089,9 +2201,22 @@ async function init() {
   const carried = clamp(Number(boot.state.satiety) || 0, 0, 100)
   model.satiety = clamp(carried - offlineMin * (100 / (5 * 60)), 0, 100)
 
-  const wantFish = clamp(Number(boot.state.fishCount) || 3, 1, 8)
-  addFish(true) // 保底一条小丑鱼
-  while (model.fish.length < wantFish) addFish()
+  const savedFish = Array.isArray(boot.state.fish)
+    ? boot.state.fish.filter((p) => p && typeof p === 'object').slice(0, 8)
+    : []
+  if (savedFish.length) {
+    // 第一条必须是小丑鱼；旧数据里如果有小丑鱼但不在首位，把它挪回来
+    const clownIndex = savedFish.findIndex((p) => p.temper === 'clown')
+    if (clownIndex < 0) savedFish.unshift({ temper: 'clown' })
+    else if (clownIndex > 0) savedFish.unshift(savedFish.splice(clownIndex, 1)[0])
+    for (const profile of savedFish.slice(0, 8)) addFish(profile)
+  } else {
+    // 旧存档没有 fish 数组：按 fishCount 随机生成一次，随后 save() 落成新格式
+    const wantFish = clamp(Number(boot.state.fishCount) || 3, 1, 8)
+    addFish('clown') // 保底一条小丑鱼
+    while (model.fish.length < wantFish) addFish()
+  }
+  save()
 
   model.sandSeed = rand(1, 999)
   seedDust()

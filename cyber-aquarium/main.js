@@ -28,6 +28,7 @@ const DEFAULT_STATE = {
   // 之后就全听存档的，不会再重置
   satiety: 4,
   fishCount: 3,
+  fish: [], // 每条鱼的种类/颜色 profile；旧存档没有，启动时按 fishCount 兼容
   alwaysOnTop: true,
   savedAt: Date.now(),
 }
@@ -389,6 +390,12 @@ async function runCapture(target) {
         cv.dispatchEvent(new MouseEvent('contextmenu', { clientX: 210, clientY: 170, bubbles: true, cancelable: true }))
         const menuAfterRightClick = M.menuOpen
         const menuItems = document.querySelectorAll('#menu button').length
+        // 真实右键会先发 pointerdown 再发 contextmenu；只发 contextmenu 测不出
+        // "捕获阶段先 closeMenu、contextmenu 又 open" 这个 bug
+        cv.dispatchEvent(new PointerEvent('pointerdown', {
+          clientX: 210, clientY: 170, button: 2, buttons: 2,
+          bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', isPrimary: true,
+        }))
         cv.dispatchEvent(new MouseEvent('contextmenu', { clientX: 210, clientY: 170, bubbles: true, cancelable: true }))
         const menuAfterSecondRightClick = M.menuOpen
 
@@ -410,9 +417,33 @@ async function runCapture(target) {
           M.cursor.stamp = M.t - (ageSec || 0)
         }
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+        const resetFishTestState = (x) => {
+          x.bumpT = 0
+          x.bumpCool = 0
+          x.petT = 0
+          x.petCool = 0
+          x.falling = false
+          x.outT = 0
+          x.exciteT = 0
+          x.returning = false
+          x.fullT = 0
+        }
+        const isolateFishTest = (target) => {
+          M.pellets.length = 0
+          M.fish.forEach((x, i) => {
+            resetFishTestState(x)
+            if (x === target) return
+            x.x = 3 + i * 4
+            x.y = 2.5
+            x.mode = 'cruise'
+            x.modeT = 99
+            x.scare = 0
+          })
+        }
 
         // 1) 胆小型：靠太近会加速逃开（用确定性步进，不依赖 rAF）
         const shy = M.fish[0]
+        isolateFishTest(shy)
         shy.temper = 'shy'
         shy.mode = 'cruise'
         shy.modeT = 9
@@ -424,8 +455,38 @@ async function runCapture(target) {
         window.__aq.stepSim(20)
         const shyFled = shy.x - shyX0 > 1
 
+        // 胆小鱼受惊可以游出缸外消失，惊吓结束后再从墙边游回来
+        const shyNormalMax = COLS - shy.body.length
+        shy.x = shyNormalMax
+        shy.y = 8
+        shy.mode = 'cruise'
+        shy.modeT = 9
+        shy.bumpT = 0
+        shy.bumpCool = 0
+        shy.petT = 0
+        shy.scare = 1.1
+        shy.dir = 1 // 当前朝右，受惊时往右墙冲
+        shy.returning = false
+        let shyWentOut = false
+        for (let k = 0; k < 20; k++) {
+          window.__aq.stepSim(1)
+          if (shy.x >= COLS) {
+            shyWentOut = true
+            break
+          }
+        }
+        window.__aq.stepSim(45)
+        const shyWallExit = shyWentOut && !shy.returning && shy.x >= 0 && shy.x <= shyNormalMax
+        shy.x = 20
+        shy.y = 8
+        shy.scare = 0
+        shy.returning = false
+        shy.mode = 'cruise'
+        shy.modeT = 9
+
         // 2) 好奇型：光标停住一会儿，它会绕过来
         const curious = M.fish[1]
+        isolateFishTest(curious)
         curious.temper = 'still'
         curious.mode = 'cruise'
         curious.modeT = 9
@@ -442,6 +503,7 @@ async function runCapture(target) {
 
 
         const calm = M.fish[2]
+        isolateFishTest(calm)
         calm.temper = 'calm'
         calm.mode = 'cruise'
         calm.modeT = 9
@@ -593,6 +655,36 @@ async function runCapture(target) {
         if (clownFish) {
           const clownTemper = clownFish.temper
           clownFish.temper = 'clown'
+          // 把其它鱼和螃蟹都定住，别让随机溜达/碰撞干扰"逗螃蟹"判定
+          M.pellets.length = 0
+          M.fish.forEach((x, i) => {
+            x.bumpT = 0
+            x.bumpCool = 0
+            x.petT = 0
+            x.falling = false
+            x.outT = 0
+            x.exciteT = 0
+            if (x === clownFish) return
+            x.x = 3 + i * 4
+            x.y = 2.5
+            x.mode = 'cruise'
+            x.modeT = 99
+            x.scare = 0
+          })
+          clownFish.bumpT = 0
+          clownFish.bumpCool = 0
+          clownFish.petT = 0
+          clownFish.falling = false
+          clownFish.outT = 0
+          clownFish.exciteT = 0
+          // 固定螃蟹位置，避免它之前被溜达到左边导致测试鱼被放到负坐标
+          crab.x = 30
+          crab.y = 18
+          crab.mode = 'sleep'
+          crab.modeT = 999
+          crab.pinch = 0
+          crab.yTarget = 18
+          crab.rowT = 999
           const near = Math.round(crab.x) + 4
           const aim = (c) => {
             M.cursor.x = c
@@ -697,7 +789,6 @@ async function runCapture(target) {
         M.pearlT = 0
         M.pet.fish = null
         M.pet.time = 0
-        M.pet.cool = 0
         M.fish.forEach((x, i) => {
           x.bumpT = 0
           x.bumpCool = 0
@@ -721,7 +812,9 @@ async function runCapture(target) {
         M.cursor.inside = true
         M.cursor.stamp = M.t - 3
         window.__aq.stepSim(20)
-        const petHearts = M.hearts.length > 0 && M.stats.pets > pets0
+        // 只看"有没有冒过爱心"：爱心寿命 1.15s，20 帧是 1.33s，
+        // 随机间隔可能刚好落在两次爱心之间，不能拿 hearts.length 当断言
+        const petHearts = M.stats.pets > pets0
 
         // 饿到 15 以下：摸不出爱心
         M.satiety = 5
@@ -772,7 +865,7 @@ async function runCapture(target) {
         // 点它 → 惊醒（scare 覆盖睡觉）
         const px2 = window.__aq.layout()
         window.__aq.clickAt(px2.pad + (Math.round(sf.x) + 1 + 0.5) * px2.cellW, px2.pad + (Math.round(sf.y) + 0.5) * px2.cellH)
-        const clickWakesSleeping = sf.scare > 0
+        const clickWakesSleeping = sf.scare > 0 && sf.mode === 'cruise'
         M.satiety = 80
 
         // 兴奋前/后的平均游速（格/秒），不是断言，是给人看的数据
@@ -792,7 +885,7 @@ async function runCapture(target) {
         const speedNormal = measureSpeed(2)
         window.__aq.runAction('scape')
         const speedExcited = measureSpeed(2)
-        return JSON.stringify({ speedNormal, speedExcited, afterClick, feeds: M.stats.feeds, dragStarts, dragEnds: M.stats.dragEnds, menuAfterRightClick, menuItems, menuAfterSecondRightClick, hasClown, clownKept, shyFled, stillApproached, stillDbg: { d0: +d0.toFixed(2), d1: +d1.toFixed(2) }, calmFollowed, mouthOk, ateSettled, themeOk, scares, scared, fedOnFish, crabPinched, crabIgnoredFood, crabStillOnSand, crabChased, crabFled, clownBackedOff, clownCameBack, crabSleptCrouched, crabSleptNoFeet, crabSleptClaws, crabYielded, hungryGrey, clearAwake, scapeStill, allAwake, excited, crabMoved, fishExcite, crabExcite, clearWater, pearlsQueued, pearlsVisible, starveBang, fullIgnores, ravenousAll, ateWhenStarved, digestRest, revivedColor, petHearts, noHeartsStarving, noHeartsSleeping, clickWakesSleeping, fish: M.fish.length })
+        return JSON.stringify({ speedNormal, speedExcited, afterClick, feeds: M.stats.feeds, dragStarts, dragEnds: M.stats.dragEnds, menuAfterRightClick, menuItems, menuAfterSecondRightClick, hasClown, clownKept, shyFled, shyWallExit, stillApproached, stillDbg: { d0: +d0.toFixed(2), d1: +d1.toFixed(2) }, calmFollowed, mouthOk, ateSettled, themeOk, scares, scared, fedOnFish, crabPinched, crabIgnoredFood, crabStillOnSand, crabChased, crabFled, clownBackedOff, clownCameBack, crabSleptCrouched, crabSleptNoFeet, crabSleptClaws, crabYielded, hungryGrey, clearAwake, scapeStill, allAwake, excited, crabMoved, fishExcite, crabExcite, clearWater, pearlsQueued, pearlsVisible, starveBang, fullIgnores, ravenousAll, ateWhenStarved, digestRest, revivedColor, petHearts, noHeartsStarving, noHeartsSleeping, clickWakesSleeping, fish: M.fish.length })
       } catch (e) { return JSON.stringify({ selftestError: String(e && (e.stack || e.message)) }) } })()`)
       console.log('selftest ' + res)
     }
@@ -1011,6 +1104,19 @@ function registerIpc() {
     if (patch && typeof patch === 'object') {
       if (Number.isFinite(patch.satiety)) state.satiety = patch.satiety
       if (Number.isFinite(patch.fishCount)) state.fishCount = patch.fishCount
+      if (Array.isArray(patch.fish)) {
+        state.fish = patch.fish
+          .filter((p) => p && typeof p === 'object')
+          .slice(0, 8)
+          .map((p) => ({
+            temper: typeof p.temper === 'string' ? p.temper : '',
+            paint: typeof p.paint === 'string' ? p.paint : '',
+            accent: typeof p.accent === 'string' ? p.accent : '',
+            hue: Number.isFinite(p.hue) ? p.hue : 0,
+            greed: Number.isFinite(p.greed) ? p.greed : 1,
+            rest: p.rest === true,
+          }))
+      }
     }
     saveState()
     return true

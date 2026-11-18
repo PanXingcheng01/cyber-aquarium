@@ -4,13 +4,13 @@
 
 ![赛博鱼缸](shots/aquarium.png)
 
-`v1.1.1` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
+`v1.1.2` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
 
 ## 下载与上手
 
 > 不想看代码，只想养鱼：按下面四步走。
 
-1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.1.1-portable.zip`（约 130 MB）。
+1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.1.2-portable.zip`（约 130 MB）。
    - **不要下 `Source code`**，那是源码快照，不能直接玩。
 2. 解压到**纯英文路径**，例如 `D:\CyberAquarium`。
    - 路径里只要有中文（或其它非英文字符），Electron 会直接崩溃；启动器会先弹窗提醒。
@@ -85,6 +85,9 @@ IPC 通道：
   "x": 0, "y": 0,
   "size": "medium", "theme": "clear",
   "satiety": 72, "fishCount": 3,
+  "fish": [
+    { "temper": "clown", "paint": "clown", "accent": "#ffe9a8", "hue": 0, "greed": 1.1, "rest": false }
+  ],
   "alwaysOnTop": true, "savedAt": 0
 }
 ```
@@ -92,6 +95,7 @@ IPC 通道：
 - 每 5 秒自动保存一次；页面隐藏和 `beforeunload` 时也会保存。
 - 饱食度按真实时间衰减：`100 / (5 * 3600)` 每秒，满 100 约 5 小时归零；启动时按 `savedAt` 补算离线衰减。
 - 首次启动（没有存档）：SAT=4、3 条鱼、medium、透明外壳、置顶。
+- 每条鱼的种类、颜色样式、贪吃程度和睡姿存在 `fish` 里；重启不会换鱼。旧存档没有 `fish` 时按 `fishCount` 随机补一次，之后固定。
 - 窗口位置和尺寸也在这里；删掉文件即恢复默认。
 
 ## 行为模型
@@ -105,7 +109,11 @@ IPC 通道：
 | `cruise` | 5 / 4~10s | 巡航，`targetY` 以 0.8 格/s 追赶 |
 | `idle` | 3 / 1.6~4.2s | 原地浮沉 |
 | `burst` | 2 / 0.9~2.2s | 速度 ×2.9 |
-| `sleep` | 2 / 7~16s | 悬停或贴沙面，头顶飘 `z`；喂食、鼠标、点击都能叫醒 |
+| `sleep` | 权重按性格 / 7~16s × 体型 | 悬停或贴沙面，头顶飘 `z`；喂食、点击能叫醒，睡着时忽略鼠标/抚摸/碰撞 |
+
+睡眠权重：胆小 0.8、小丑鱼 1.2、好奇 1.8、被动 2.2；大鱼睡得更久（3 格 ×0.7，7 格 ×1.1）。
+
+受惊撞到左右边界会反弹，不会贴着看不见的墙原地闪；胆小鱼例外，会直接游出缸沿消失，惊吓结束后再游回来。边框最外列是缓冲，所有鱼都能进去。
 
 ### 性格（对鼠标）
 
@@ -138,7 +146,7 @@ IPC 通道：
 | 跟着你 | 15%（光标 12 格内） | 2.0 格/s |
 | 躲开你 | 9%（光标 12 格内） | 3.4 格/s |
 
-- 只会横着走，活动范围 1.5~43.5 格。
+- 基本横着走，活动范围 1.5~43.5 格；偶尔极慢地换一行（18~19 行，约每 20~40 秒考虑一次）。
 - 点它 → 夹人（`pinch` 0.75s）→ 横着窜开；它不吃鱼食。
 - 鱼贴着沙面过来时有概率让路（`yieldToFish`）；睡着时概率很低。
 - 逗螃蟹时小丑鱼会退开，不抢戏（`teasingCrab`）。
@@ -148,7 +156,7 @@ IPC 通道：
 | 手势 | 判定 | 结果 |
 | --- | --- | --- |
 | 点击水面 | 按下/松开位移 <4px，且没点到鱼/蟹 | 撒 1~3 颗鱼食 |
-| 点击鱼 | 命中鱼身 | 惊吓：闪白 + 3.2×base 窜开 + 拖气泡 |
+| 点击鱼 | 命中鱼身 | 惊吓：闪白 + 顺着当前朝向 3.2×base 冲一段 + 拖气泡 |
 | 点击螃蟹 | 命中螃蟹 | 夹人 + 闪黄 + 窜开 |
 | 按住拖动 | 位移 ≥4px | 拖动整个窗口（主进程 `setBounds`） |
 | 停在鱼身上 | 静止 ≥ `PET.dwell`（0.45~0.85s） | 抚摸：鱼停下、冒 `♥`；睡着的鱼点一下才醒 |
@@ -186,13 +194,13 @@ IPC 通道：
 | --- | --- |
 | 鱼种、颜色、基础速度 | `renderer/app.js` 的 `KINDS` / `CLOWN` |
 | 整体鱼速 | `FISH_SPEED`（0.85） |
-| 鱼的状态权重 / 时长 | `FISH_MODES` |
+| 鱼的状态权重 / 时长 | `FISH_MODES`（睡眠权重看 `SLEEP_WEIGHT`，体型看 `sleepSizeK()`） |
 | 性格阈值与反应 | `stepCursorPull()` |
 | 饥饿阈值 / 游速 / 追食 | `HUNGER` / `HUNGER_SPEED` / `CHASE_SPEED` |
 | 食欲、贪吃、消化 | `APPETITE` / `GREED` / `DIGEST` |
 | 饱食度衰减 | `step()` 里的 `100 / (5 * 3600)` |
 | 鱼食下沉 / 寿命 / 上限 | `spawnPellet()` / `stepPellets()` |
-| 抚摸门槛 / 爱心 | `PET` / `HEART` |
+| 抚摸门槛 / 爱心 | `PET` / `HEART`（摸够 2.5s 后这条鱼单独冷静 10s） |
 | 螃蟹行为 / 速度 | `CRAB` / `pickCrabMode()` / `stepCrab()` |
 | 受惊 / 碰撞 | `stepFish()` / `stepBumps()` |
 | 格子 / 窗口尺寸 | `main.js` 的 `LAYOUT` |
@@ -208,7 +216,7 @@ IPC 通道：
 | 窗口 | 352×264 / 409×310 / 523×402 |
 | 整体鱼速 | `FISH_SPEED = 0.85` |
 | 鱼数 | 1~8 |
-| 鱼食 | 下沉 1.6 格/s，寿命 45s，上限 24 颗 |
+| 鱼食 | 下沉 1.6 格/s，寿命 45s（最后 3 秒闪），上限 24 颗 |
 | 饥饿衰减 | 100 / (5×3600) 每秒，约 5 小时归零 |
 | 存档 | 每 5s |
 | 菜单项 | 10 组（`MENU_ITEMS`，尺寸行展开为 3 个按钮，DOM 共 12 个） |
@@ -216,7 +224,7 @@ IPC 通道：
 ## 开发自检
 
 ```cmd
-:: 交互回归（当前 43 项，必须全绿；--selftest 必须配合 --capture 才会执行）
+:: 交互回归（当前 44 项，必须全绿；--selftest 必须配合 --capture 才会执行）
 runtime\electron.exe cyber-aquarium --selftest --capture=shots\test.png
 
 :: 截图（保留 alpha；--force-device-scale-factor=1 让输出稳定）
@@ -229,7 +237,7 @@ runtime\electron.exe cyber-aquarium --fps
 ```
 
 > `--selftest` 写在截图流程里：不带 `--capture` 时它不会执行，窗口会一直开着。要跑回归就照上面的命令带一个 `--capture`。
-> 输出里的 43 个布尔断言都应符合预期；其中 `menuAfterSecondRightClick=false` 是预期值（第二次右键应关闭菜单）。
+> 输出里的 44 个布尔断言都应符合预期；其中 `menuAfterSecondRightClick=false` 是预期值（第二次右键应关闭菜单）。
 > 跑之前先关掉正在运行的鱼缸：程序有单实例锁，第二次启动会直接退出，看起来像“什么都没发生”。
 
 验收 / 截图开关（`main.js` 顶部解析）：
