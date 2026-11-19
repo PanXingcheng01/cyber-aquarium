@@ -1,8 +1,8 @@
-﻿赛博鱼缸 1.2 · 使用说明
+﻿赛博鱼缸 1.2 · 快速上手
 
 一、启动
 1. 整个文件夹解压到纯英文路径（如 D:\CyberAquarium）；路径有中文，Electron 会崩。
-2. 双击 赛博鱼缸.exe。不弹窗、任务栏没图标，鱼缸直接出现在桌面。
+2. 双击 启动赛博鱼缸.exe。不弹窗、任务栏没图标，鱼缸直接出现在桌面。
 3. 第一次启动 SAT 只有 4%，右键 →「撒一把鱼食」。
 4. 想开机启动：Win+R → shell:startup → 放入 exe 快捷方式。
 
@@ -40,10 +40,10 @@
 · 找不到鱼缸：可能拖到屏幕外，删 state.json 重开。
 
 六、更新
-· 解压新包，覆盖 app\、赛博鱼缸.exe、使用说明.txt、说明书.html；
+· 解压新包，覆盖 app\、启动赛博鱼缸.exe、快速上手.txt、用户手册.html；
   runtime\ 没换 Electron 可保留。
 · 存档在 %APPDATA%，覆盖安装不会丢。
 
 七、里面有什么 / 系统要求
-· exe 启动器；runtime Electron；app 程序本体；说明书.html 图文版。
+· exe 启动器；runtime Electron；app 程序本体；用户手册.html 图文版。
 · Windows 10/11 64 位；不用 Node、不用联网、不需要管理员权限。

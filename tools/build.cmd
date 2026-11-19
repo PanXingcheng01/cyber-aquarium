@@ -7,8 +7,8 @@ rem ASCII only on purpose (cmd.exe doesn't read UTF-8); Chinese names are used l
 rem
 rem Zip layout:
 rem   CyberAquarium\
-rem     赛博鱼缸.exe      launcher compiled here from tools\launcher.cs (icon + version embedded)
-rem     使用说明.txt / 说明书.html
+rem     启动赛博鱼缸.exe      launcher compiled here from tools\launcher.cs (icon + version embedded)
+rem     快速上手.txt / 用户手册.html
 rem     runtime\          slimmed Electron runtime
 rem     app\              the app (source: app\)
 rem
@@ -72,9 +72,9 @@ echo using System.Reflection;>>"%VCS%"
 echo [assembly: AssemblyVersion("%VER%.0")]>>"%VCS%"
 echo [assembly: AssemblyFileVersion("%VER%")]>>"%VCS%"
 echo [assembly: AssemblyInformationalVersion("%VER%")]>>"%VCS%"
-echo [assembly: AssemblyCopyright("Copyright (c) 2026 PanXingcheng")]>>"%VCS%"
+echo [assembly: AssemblyCopyright("Copyright (c) 2026 PanXingcheng01")]>>"%VCS%"
 
-"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ "/out:%ROOT%\赛博鱼缸.exe" "/win32icon:%ROOT%\assets\aquarium.ico" /reference:System.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll "%ROOT%\tools\launcher.cs" "%VCS%" >nul
+"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ "/out:%ROOT%\启动赛博鱼缸.exe" "/win32icon:%ROOT%\assets\aquarium.ico" /reference:System.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll "%ROOT%\tools\launcher.cs" "%VCS%" >nul
 if errorlevel 1 echo   WARNING: launcher compile failed, keeping the existing exe
 del /f /q "%VCS%" 2>nul
 goto launcherdone
@@ -82,8 +82,8 @@ goto launcherdone
 echo   WARNING: csc not found, keeping the existing exe
 :launcherdone
 
-copy /y "%ROOT%\赛博鱼缸.exe" "%PKG%\" >nul
-copy /y "%ROOT%\使用说明.txt" "%PKG%\" >nul
+copy /y "%ROOT%\启动赛博鱼缸.exe" "%PKG%\" >nul
+copy /y "%ROOT%\快速上手.txt" "%PKG%\" >nul
 copy /y "%ROOT%\*.html" "%PKG%\" >nul
 
 echo [5/5] zip ...
@@ -97,11 +97,12 @@ if errorlevel 1 (
 rem 摊开的中间目录不留在磁盘上（只留 zip）
 rmdir /s /q "%PKG%"
 
-rem 本地存档：dist 只留当前版本，其它版本全部挪进 dist\history
-rem （history 里每一份 = GitHub 上某个已发布的版本，别在这里重打旧版本）
+rem 本地存档：dist 只留当前版本。
+rem 同一 x.y 的补丁更新是 z 级：旧 zip 直接删，不进 history。
+rem 只有换了 x.y（y/x 级）才把旧版本挪进 history。
 if not exist "%DIST%\history" mkdir "%DIST%\history"
-move /y "%DIST%\CyberAquarium-v*-portable.zip" "%DIST%\history\" >nul 2>nul
-move /y "%DIST%\history\CyberAquarium-v%VER%-portable.zip" "%DIST%\" >nul 2>nul
+powershell -NoProfile -Command ^
+  "$cur='%VER%'; $cp=$cur.Split('.'); Get-ChildItem '%DIST%\CyberAquarium-v*-portable.zip' | Where-Object { $_.Name -ne ('CyberAquarium-v'+$cur+'-portable.zip') } | ForEach-Object { if ($_.Name -match '^CyberAquarium-v(.+)-portable\.zip$') { $p=$matches[1].Split('.'); if ($p[0] -eq $cp[0] -and $p[1] -eq $cp[1]) { Remove-Item $_.FullName -Force } else { Move-Item $_.FullName (Join-Path '%DIST%\history' $_.Name) -Force } } }"
 
 for %%F in ("%OUT%") do echo done: %%~zF bytes  ^-^>  %%~fF
 rem 从资源管理器双击时停下来看结果；带参数调用（脚本/CI）就不停

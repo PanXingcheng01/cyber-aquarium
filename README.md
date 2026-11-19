@@ -4,7 +4,7 @@
 
 ![赛博鱼缸](shots/aquarium.png)
 
-`v1.2.1` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [说明书](说明书.html)
+`v1.2.2` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [用户手册](用户手册.html)
 
 1.2 以鱼为本：每条鱼有自己的 SAT；底栏 `SAT AVG` 是整缸平均；右击鱼看单条标签，点 SAT AVG 看整缸状态。
 
@@ -12,15 +12,15 @@
 
 > 不想看代码，只想养鱼：按下面四步走。
 
-1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.2.1-portable.zip`（约 130 MB）。
+1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.2.2-setup.exe`（安装版）或 `CyberAquarium-v1.2.2-portable.zip`（便携版）。
    - **不要下 `Source code`**，那是源码快照，不能直接玩。
 2. 解压到**纯英文路径**，例如 `D:\CyberAquarium`。
    - 路径里只要有中文（或其它非英文字符），Electron 会直接崩溃；启动器会先弹窗提醒。
-3. 双击 `赛博鱼缸.exe`。
+3. 双击 `启动赛博鱼缸.exe`。
    - 第一次启动 SAT 只有 4%，右键 →「撒一把鱼食」；想从头养就删掉 `%APPDATA%\cyber-aquarium\state.json`。
-4. 玩法看包里的 **`说明书.html`**（图文、带目录，双击即开）和 **`使用说明.txt`**（一页纸 / FAQ）。
+4. 玩法看包里的 **`用户手册.html`**（图文、带目录，双击即开）和 **`快速上手.txt`**（一页纸 / FAQ）。
 
-> 更新已有安装：覆盖 `app/`、`赛博鱼缸.exe`、`使用说明.txt`、`说明书.html`；`runtime/` 没换 Electron 时可以保留。存档在 `%APPDATA%\cyber-aquarium`，不会被覆盖。
+> 更新已有安装：覆盖 `app/`、`启动赛博鱼缸.exe`、`快速上手.txt`、`用户手册.html`；`runtime/` 没换 Electron 时可以保留。存档在 `%APPDATA%\cyber-aquarium`，不会被覆盖。
 
 系统要求：Windows 10 / 11（64 位）；不用装 Node、不用联网、不需要管理员权限。程序没有数字签名，首次运行 SmartScreen 提示时选「更多信息 → 仍要运行」。
 
@@ -36,7 +36,7 @@ cd cyber-aquarium
 1. 下载 Electron 45.x win32-x64，解压到 `runtime\`（能看到 `runtime\electron.exe` 即正确）。该目录约 285 MB，已在 `.gitignore` 中排除。
 2. 不想放在项目里，就设环境变量 `AQ_RUNTIME` 指向别处的 runtime（同样必须纯英文）。
 3. 启动方式：
-   - 双击根目录 `赛博鱼缸.exe`（启动器，自动找 `runtime\` 和 `app\`）
+   - 双击根目录 `启动赛博鱼缸.exe`（启动器，自动找 `runtime\` 和 `app\`）
    - `tools\launch-debug.cmd`（保留控制台，能看到 Electron 报错）
    - `runtime\electron.exe app`（直接启动程序本体）
 
@@ -53,13 +53,13 @@ cyber-aquarium/                  # 仓库根
 │       ├── fish-data.js         # 品种 / body / 配色 / 体长系数数据
 │       └── app.js               # 模型、step、draw、输入、菜单
 ├── tools/
-│   ├── launcher.cs              # 启动器源码（csc 编译进 赛博鱼缸.exe）
+│   ├── launcher.cs              # 启动器源码（csc 编译进 启动赛博鱼缸.exe）
 │   ├── build.cmd                 # 版本注入、runtime 瘦身、打 zip
 │   └── launch-debug.cmd
 ├── assets/aquarium.ico
 ├── shots/                       # README 截图
-├── 说明书.html                  # 玩家图文说明
-├── 使用说明.txt                  # 玩家一页纸
+├── 用户手册.html                # 玩家图文手册
+├── 快速上手.txt                 # 玩家一页纸
 ├── runtime/                     # Electron 45.3.2（gitignore）
 ```
 
@@ -80,7 +80,7 @@ IPC 通道：
 | `aq:load` / `aq:save` | renderer → main | 读 / 写存档 |
 | `aq:drag-start` / `aq:drag-end` | renderer → main | 拖动开始 / 结束（主进程用 `setBounds` 跟指针） |
 | `aq:set-size` / `aq:theme` / `aq:top` | renderer → main | 尺寸 / 深色外壳 / 置顶 |
-| `aq:manual` / `aq:quit` | renderer → main | 打开说明书 / 退出 |
+| `aq:manual` / `aq:quit` | renderer → main | 打开用户手册 / 退出 |
 
 ## 运行与存档
 
@@ -249,6 +249,18 @@ IPC 通道：
 <blockquote>
 
 <details>
+<summary><strong>v1.2.2</strong> · 安装版与启动器/文档命名</summary>
+
+- 新增 Inno Setup 安装版：per-user、无需管理员，默认安装到 `%LOCALAPPDATA%\CyberAquarium`；安装位置页始终显示，非纯英文路径会拦截。
+- 桌面快捷方式名「赛博鱼缸」默认创建；开始菜单和开机自启默认不勾选。
+- 主程序文件改名为 `启动赛博鱼缸.exe`；帮助文档改为 `快速上手.txt` / `用户手册.html`。
+- 安装完成页展示 `快速上手.txt`；不再把 `.ico` 源文件放进安装目录。
+- 卸载入口为 `扔掉鱼缸.exe`，默认保留 `%APPDATA%\cyber-aquarium` 存档；真正卸载器藏在 `.uninstall\`。
+- 启动器与 setup 的文件属性同步：CompanyName 留空，产品名/描述/版权一致。
+
+</details>
+
+<details>
 <summary><strong>v1.2.1</strong> · 饿鱼连吃、抢食和菜单撒食</summary>
 
 - 很饿/饿坏时不再犹豫，直接吃；普通饿的开口概率额外 ×1.35。
@@ -394,7 +406,7 @@ cmd /c tools\build.cmd build
 
 ### 版本更新规则
 
-- 版本号**唯一来源**：`app/package.json` 的 `version`。zip 名、`赛博鱼缸.exe` 文件属性、Release tag 自动一致，不要手改 exe。
+- 版本号**唯一来源**：`app/package.json` 的 `version`。zip 名、`启动赛博鱼缸.exe` 文件属性、Release tag 自动一致，不要手改 exe。
 - 级别：`z` = 只调手感 / 修 bug / 改文案；`y` = 加了能感知的新功能；`x` = 整体重做 / 不兼容。
 
 | 变化 | 页面 | 说明 |
@@ -404,7 +416,7 @@ cmd /c tools\build.cmd build
 | `x` 大版本 | 旧页保留，另开 | 只写本版 |
 
 - `v1.0.0` 是首个版本，永久保留。
-- 发布顺序：改 version → 同步 README 下载文件名 / `说明书.html` 页脚（页脚只写 x.y）→ 自检 → 打包 → 解压到纯英文路径实测 → Release / 上传 / 核对 sha256。
+- 发布顺序：改 version → 同步 README 下载文件名 / `用户手册.html` 页脚（页脚只写 x.y）→ 自检 → 打包 → 解压到纯英文路径实测 → Release / 上传 / 核对 sha256。
 - Release 正文写清「下载 Assets 里的 zip，不是 Source code」「解压到纯英文路径」「首次启动 SAT=4」。
 
 ## 已知限制

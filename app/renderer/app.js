@@ -2074,7 +2074,7 @@ const MENU_ITEMS = [
   { act: 'theme', label: '深色模式', toggle: true },
   { act: 'top', label: '总在最前', toggle: true },
   { sep: true },
-  { act: 'manual', label: '使用说明' },
+  { act: 'manual', label: '用户手册' },
   { sep: true },
   { act: 'quit', label: '退出', danger: true },
 ]

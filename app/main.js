@@ -1174,8 +1174,8 @@ function registerIpc() {
   })
 
   ipcMain.handle('aq:manual', async () => {
-  // 说明书放在程序目录的上一级：开发布局在项目根，发布包里在 exe 旁边
-  const file = path.join(__dirname, '..', '说明书.html')
+  // 用户手册放在程序目录的上一级：开发布局在项目根，发布包里在 exe 旁边
+  const file = path.join(__dirname, '..', '用户手册.html')
   if (!fs.existsSync(file)) return { ok: false, file }
   const err = await shell.openPath(file)
   return { ok: !err, file, err }
