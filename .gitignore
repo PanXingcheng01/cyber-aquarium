@@ -13,3 +13,8 @@ shots/test.png
 shots/tmp*.png
 Thumbs.db
 .DS_Store
+
+# 安装器构建文件：本地保留，不进仓库；Release 里正常提供 setup
+tools/installer.iss
+tools/build-setup.ps1
+tools/uninstaller.cs
