@@ -135,12 +135,14 @@ function keepOnScreen(x, y, w, h) {
  * 代价：resizable:false 的窗口会忽略尺寸，所以要临时放开（跟 applyWindowSize 同一套）。
  */
 let dragSize = null
+let dragLast = null
 
 function stopDrag() {
   if (dragTimer) clearInterval(dragTimer)
   dragTimer = null
   dragOffset = null
   dragSize = null
+  dragLast = null
   if (win && !win.isDestroyed()) win.setResizable(false)
 }
 
@@ -151,18 +153,19 @@ function startDrag() {
   const cursor = screen.getCursorScreenPoint()
   dragOffset = { x: cursor.x - b.x, y: cursor.y - b.y }
   dragSize = { width: layout.width, height: layout.height }
+  dragLast = { x: b.x, y: b.y }
   stopDragTimerOnly()
   win.setResizable(true)
   dragTimer = setInterval(() => {
     if (!win || win.isDestroyed() || !dragOffset || !dragSize) return
     const p = screen.getCursorScreenPoint()
-    win.setBounds({
-      x: Math.round(p.x - dragOffset.x),
-      y: Math.round(p.y - dragOffset.y),
-      width: dragSize.width,
-      height: dragSize.height,
-    })
-  }, 10)
+    const x = Math.round(p.x - dragOffset.x)
+    const y = Math.round(p.y - dragOffset.y)
+    // 位置没变就不要每帧重写窗口，透明窗口频繁 setBounds 会闪
+    if (dragLast && dragLast.x === x && dragLast.y === y) return
+    dragLast = { x, y }
+    win.setBounds({ x, y, width: dragSize.width, height: dragSize.height }, false)
+  }, 16)
 }
 
 function stopDragTimerOnly() {
@@ -238,9 +241,11 @@ function createWindow() {
     }
   })
 
+  const createdWindow = win
   win.on('closed', () => {
     stopDrag()
-    win = null
+    // 重建窗口时，旧窗口的 closed 不能把新 win 清空
+    if (win === createdWindow) win = null
   })
 }
 
@@ -432,6 +437,11 @@ async function runCapture(target) {
         }
         const isolateFishTest = (target) => {
           M.pellets.length = 0
+          // 鱼行为断言是隔离测试：清掉拖拽残留水流，避免新物理影响判定
+          if (M.water) {
+            M.water.vx = 0
+            M.water.vy = 0
+          }
           M.fish.forEach((x, i) => {
             resetFishTestState(x)
             if (x === target) return
@@ -1168,7 +1178,10 @@ function registerIpc() {
   ipcMain.handle('aq:top', (_e, value) => {
     const on = !!value
     state.alwaysOnTop = on
-    if (win && !win.isDestroyed()) win.setAlwaysOnTop(on, 'floating')
+    if (win && !win.isDestroyed()) {
+      win.setAlwaysOnTop(on, 'floating')
+      if (on) win.moveTop()
+    }
     saveState()
     return on
   })

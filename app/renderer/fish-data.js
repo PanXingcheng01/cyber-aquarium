@@ -43,15 +43,15 @@ window.AQ_DATA = {
 
   // 跟体长有关的生理/物理参数统一放这里；新增字段先加表，再由 bodySizeFor() 取。
   BODY_SIZE: {
-    2: { food: [2, 3], sleepK: 0.6, dropK: 0.5, glowK: 0.61 },
-    3: { food: [4, 5], sleepK: 0.7, dropK: 0.55, glowK: 0.69 },
-    4: { food: [4, 5], sleepK: 0.8, dropK: 0.68, glowK: 0.77 },
-    5: { food: [3, 4], sleepK: 0.9, dropK: 0.81, glowK: 0.85 },
-    6: { food: [3, 4], sleepK: 1.0, dropK: 0.94, glowK: 0.93 },
-    7: { food: [2, 3], sleepK: 1.1, dropK: 1.07, glowK: 1.01 },
-    8: { food: [2, 3], sleepK: 1.2, dropK: 1.15, glowK: 1.05 },
-    9: { food: [2, 3], sleepK: 1.3, dropK: 1.15, glowK: 1.05 },
-    10: { food: [2, 3], sleepK: 1.3, dropK: 1.15, glowK: 1.05 },
+    2: { food: [2, 3], sleepK: 0.6, dropK: 0.5, glowK: 0.61, waterK: 1.05 },
+    3: { food: [4, 5], sleepK: 0.7, dropK: 0.55, glowK: 0.69, waterK: 1.0 },
+    4: { food: [4, 5], sleepK: 0.8, dropK: 0.68, glowK: 0.77, waterK: 0.9 },
+    5: { food: [3, 4], sleepK: 0.9, dropK: 0.81, glowK: 0.85, waterK: 0.8 },
+    6: { food: [3, 4], sleepK: 1.0, dropK: 0.94, glowK: 0.93, waterK: 0.72 },
+    7: { food: [2, 3], sleepK: 1.1, dropK: 1.07, glowK: 1.01, waterK: 0.64 },
+    8: { food: [2, 3], sleepK: 1.2, dropK: 1.15, glowK: 1.05, waterK: 0.56 },
+    9: { food: [2, 3], sleepK: 1.3, dropK: 1.15, glowK: 1.05, waterK: 0.5 },
+    10: { food: [2, 3], sleepK: 1.3, dropK: 1.15, glowK: 1.05, waterK: 0.46 },
   },
   LOOKS: {
     // 六成彩色、四成单色；重复项就是权重

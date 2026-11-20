@@ -142,6 +142,7 @@ const view = { w: 409, h: 310 }
 const CELLS = COLS * ROWS
 const bufCh = new Array(CELLS).fill(' ')
 const bufCo = new Array(CELLS).fill('#ffffff')
+const bufOutline = new Array(CELLS).fill(true)
 
 // ---------------------------------------------------------------- 模型
 
@@ -161,6 +162,7 @@ const model = {
   pet: { fish: null, time: 0 },
   sandSeed: 1, // 沙面纹理种子（启动和换草时重新抽）
   surfaceCenter: COLS / 2, // 水面波纹的中心（倒水点）
+  surface: { tilt: 0, heave: 0 }, // 拖拽水流驱动的水面倾斜/起伏
   pearlT: 0, // 水草冒珍珠泡的剩余时间
   pearlAcc: 0,
   surfaceKick: 0, // 水面被搅动的剩余时间
@@ -168,9 +170,106 @@ const model = {
   cursor: { x: -1, y: -1, inside: false, stamp: 0 },
   t: 0,
   menuOpen: false,
-  crab: { x: 24, y: CRAB.y, yTarget: CRAB.y, rowT: 25, dir: 1, mode: 'wander', modeT: 2.5, pinch: 0, pinchFrom: 0, walk: 0, speed: 0, stride: 0, puffs: 1, dodgeDir: 0, exciteT: 0, escapeRow: false },
+  crab: { x: 24, y: CRAB.y, yTarget: CRAB.y, rowT: 25, dir: 1, mode: 'wander', modeT: 2.5, pinch: 0, pinchFrom: 0, walk: 0, speed: 0, stride: 0, puffs: 1, dodgeDir: 0, exciteT: 0, escapeRow: false, air: 0 },
+  // 拖拽产生的水流：独立二维状态，所有生物按注册的响应读取
+  water: { vx: 0, vy: 0, energy: 0 },
   stats: { dragStarts: 0, dragEnds: 0, feeds: 0, scares: 0, paints: 0, pinches: 0, yields: 0, pets: 0 },
 }
+
+const waterActors = []
+
+// 水流调参集中在这里；以后只改这一块，不再散落在输入/actor 里
+const WATER = {
+  ref: 200,
+  curve: 1.2,
+  maxX: 8,
+  maxY: 6,
+  wake: 1.6,
+  burst: 1.35,
+  surfaceKick: 1.6,
+  pelletLift: 1.2,
+}
+
+/** 无慢速死区的指数感知曲线：低速压得更低，200 格/秒到满档 */
+function waterGain(speed) {
+  const x = Math.max(0, speed) / WATER.ref
+  const shaped = Math.pow(x, 2.2)
+  return clamp((1 - Math.exp(-WATER.curve * shaped)) / (1 - Math.exp(-WATER.curve)), 0, 1)
+}
+
+/** 生物/植物接入水流：以后新生物只注册，不改 stepWater；wake 可选 */
+function registerWaterActor(collect, apply, wake = null) {
+  waterActors.push({ collect, apply, wake })
+}
+
+function applyFishWater(f, water, dt) {
+  if (f.returning || (!water.vx && !water.vy)) return
+  const waterK = bodySizeFor(f.body.length).waterK
+  const resist = f.mode === 'sleep' ? 1.15 : 0.9
+  f.x += water.vx * dt * 1.8 * waterK * resist
+  f.y += water.vy * dt * 1.05 * waterK * resist
+  clampFish(f)
+}
+
+function wakeFishWater(f) {
+  if (f.mode !== 'sleep') return
+  f.mode = 'cruise'
+  f.modeT = rand(3, 6)
+  f.sleepY = null
+  f.think = rand(0.5, 1.5)
+}
+
+registerWaterActor(() => model.fish, applyFishWater, wakeFishWater)
+
+registerWaterActor(() => model.plants, (pl, water, dt) => {
+  const flex = clamp(pl.h / 5, 0.6, 1.8)
+  pl.push = clamp(pl.push + water.vx * dt * (1.4 + flex), -8, 8)
+  const targetY = clamp(water.vy * 0.45 * flex, -2, 2)
+  pl.flowY = (pl.flowY || 0) + (targetY - (pl.flowY || 0)) * Math.min(1, dt * 4)
+})
+
+registerWaterActor(() => model.bubbles, (b, water, dt) => {
+  b.x = clamp(b.x + water.vx * dt * 0.8, 1.2, COLS - 2.2)
+  b.y = clamp(b.y + water.vy * dt * 0.4, WATER_TOP + 0.2, SEABED_ROW)
+})
+
+registerWaterActor(() => model.dust, (d, water, dt) => {
+  d.x = clamp(d.x + water.vx * dt * 0.5, 1.2, COLS - 2)
+  d.y = clamp(d.y + water.vy * dt * 0.3, WATER_TOP + 1.8, WATER_BOTTOM - 0.1)
+})
+
+registerWaterActor(() => model.pellets, (p, water, dt) => {
+  // 鱼食是轻物体：横向跟着水走，纵向可被托起
+  p.x = clamp(p.x + water.vx * dt * 0.9, 1.4, COLS - 2.6)
+  if (p.settled && -water.vy > WATER.pelletLift) {
+    p.settled = false
+    p.vy = -0.4
+  }
+  if (!p.settled) {
+    p.y = clamp(p.y + water.vy * dt * 0.5, WATER_TOP + 0.2, SEABED_ROW - 0.35)
+  }
+})
+
+function wakeCrabWater(crab) {
+  if (crab.mode !== 'sleep') return
+  crab.mode = 'wander'
+  crab.modeT = rand(2, 4)
+}
+
+registerWaterActor(() => [model.crab], (crab, water, dt) => {
+  // 重，但强纵向水流能把它托离沙面；水停后强弹簧拉回 0（视觉上就是下落）
+  crab.x = clamp(crab.x + water.vx * dt * 0.8, 2, CRAB.maxX)
+  const liftTarget = clamp(-water.vy * 0.9, 0, 4)
+  crab.air += (liftTarget - crab.air) * Math.min(1, dt * 8)
+  if (crab.air < 0.01) crab.air = 0
+}, wakeCrabWater)
+
+registerWaterActor(() => [model.surface], (surface, water, dt) => {
+  const targetTilt = clamp(water.vx * 0.35, -2, 2)
+  const targetHeave = clamp(water.vy * 0.35, -1.5, 1.5)
+  surface.tilt += (targetTilt - surface.tilt) * Math.min(1, dt * 6)
+  surface.heave += (targetHeave - surface.heave) * Math.min(1, dt * 6)
+})
 
 let defaultFishSatiety = 72
 
@@ -185,6 +284,7 @@ Object.defineProperty(model, 'satiety', {
 
 let down = null
 let suppressPointer = false
+let draggingWindow = false
 
 // ---------------------------------------------------------------- 小工具
 
@@ -201,13 +301,14 @@ function mirror(text) {
   return out
 }
 
-function put(c, r, ch, color) {
+function put(c, r, ch, color, outline = true) {
   c = Math.round(c)
   r = Math.round(r)
   if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return
   const i = r * COLS + c
   bufCh[i] = ch
   bufCo[i] = color
+  bufOutline[i] = outline
 }
 
 function putText(c, r, text, color) {
@@ -217,12 +318,16 @@ function putText(c, r, text, color) {
 // ---------------------------------------------------------------- 尺寸
 
 function fitCanvas() {
-  menuBox = null
   const w = Math.max(1, Math.round(document.documentElement.clientWidth))
   const h = Math.max(1, Math.round(document.documentElement.clientHeight))
   const dpr = window.devicePixelRatio || 1
-  canvas.width = Math.round(w * dpr)
-  canvas.height = Math.round(h * dpr)
+  const cw = Math.round(w * dpr)
+  const ch = Math.round(h * dpr)
+  // 拖拽时 Electron 可能发同尺寸 resize；重设 canvas.width 会清空画布并闪
+  if (canvas.width === cw && canvas.height === ch && view.w === w && view.h === h) return
+  menuFrame = null
+  canvas.width = cw
+  canvas.height = ch
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   view.w = w
   view.h = h
@@ -344,11 +449,14 @@ function allocateFishId(speciesKey, wantedId) {
   return 1
 }
 
-function addFish(type) {
+function addFish(type, initialSatiety) {
   if (model.fish.length >= 8) return false
   const profile = type && typeof type === 'object'
     ? { ...type }
     : { species: typeof type === 'string' ? type : null }
+  if (Number.isFinite(Number(initialSatiety))) {
+    profile.satiety = clamp(Number(initialSatiety), 0, 100)
+  }
   const f = makeFish(profile)
   f.id = allocateFishId(f.temper, f.id)
   model.fish.push(f)
@@ -421,6 +529,7 @@ function seedPlants() {
       h: 3 + Math.round(rand(0, 5)),
       phase: rand(0, 6.28),
       push: 0,
+      flowY: 0,
       tone: (Math.random() * PLANT_TONES.length) | 0,
       amp: rand(1.7, 3.3),
       rate: rand(0.34, 0.6),
@@ -438,6 +547,7 @@ function restorePlants(saved) {
       h: clamp(Math.round(Number(p.h) || 3), 2, 10),
       phase: rand(0, 6.28),
       push: 0,
+      flowY: 0,
       tone: clamp(Math.round(Number(p.tone) || 0), 0, PLANT_TONES.length - 1),
       amp: clamp(Number(p.amp) || 2, 0.5, 5),
       rate: clamp(Number(p.rate) || 0.45, 0.1, 2),
@@ -491,6 +601,21 @@ function satTone(sat) {
   if (sat < 20) return P.hudAlarm
   if (sat < 45) return P.hudWarn
   return P.hud
+}
+
+/** 鱼头标签：浅色外壳上用深色字，深色外壳上用原来的亮色字 */
+function tagTone(sat) {
+  const dark = model.theme === 'dark'
+  if (sat < 5) {
+    return dark
+      ? (Math.floor(model.t * 3) % 2 === 0 ? '#ff4d4d' : '#5c1b1b')
+      : (Math.floor(model.t * 3) % 2 === 0 ? '#b42318' : '#e7b2ad')
+  }
+  const tier = satTier(sat)
+  if (tier === 3) return dark ? '#ff4d4d' : '#b42318'
+  if (sat < 20) return dark ? P.hudAlarm : '#a33b0a'
+  if (sat < 45) return dark ? P.hudWarn : '#7a5200'
+  return dark ? P.hud : '#0b6b64'
 }
 
 /** #rrggbb 之间线性混合 */
@@ -668,6 +793,7 @@ function step(dt) {
   stepDust(dt)
   stepPearls(dt)
   stepPlants(dt)
+  stepWater(dt)
 }
 
 function stepPellets(dt) {
@@ -1179,6 +1305,24 @@ function stepPlants(dt) {
   }
 }
 
+/** 二维水流：衰减后统一分发给注册过的生物/植物 */
+function stepWater(dt) {
+  const w = model.water
+  w.vx *= Math.exp(-2.6 * dt)
+  w.vy *= Math.exp(-3.2 * dt)
+  if (Math.abs(w.vx) < 0.005) w.vx = 0
+  if (Math.abs(w.vy) < 0.005) w.vy = 0
+  w.energy = Math.hypot(w.vx, w.vy)
+  // 即使水已静，也要让水面/水草回到零；所以不清空 actor 遍历
+  for (const actor of waterActors) {
+    const shouldWake = actor.wake && w.energy >= WATER.wake
+    for (const body of actor.collect()) {
+      actor.apply(body, w, dt)
+      if (shouldWake) actor.wake(body)
+    }
+  }
+}
+
 // ---------------------------------------------------------------- 螃蟹
 
 /**
@@ -1345,7 +1489,7 @@ function stepSandPuffs(dt) {
 /** 点在螃蟹身上（身子那行、钳子那行、短腿那行都算） */
 function crabAt(c, r) {
   const crab = model.crab
-  const y = Math.round(crab.y)
+  const y = Math.round(crab.y - (crab.air || 0))
   const rr = Math.round(r)
   if (rr !== y && rr !== y - 1 && rr !== y + 1) return false
   const x0 = Math.round(crab.x)
@@ -1425,6 +1569,7 @@ function eat(f, pellet) {
   const wasTier = hungerTier(f)
   const [lo, hi] = bodySizeFor(f.body.length).food
   f.satiety = clamp(f.satiety + lo + Math.floor(Math.random() * (hi - lo + 1)), 0, 100)
+  updateFishStatusRow(f)
   spawnBubble(pellet.x, pellet.y)
   f.think = 0.2
   // 饿鱼不用按饱鱼的消化节奏等：越饿歇得越短，可以连着吃
@@ -1461,7 +1606,10 @@ function scareFish(f, cell) {
 // ---------------------------------------------------------------- 绘制
 
 function clearGrid() {
-  for (let i = 0; i < CELLS; i++) bufCh[i] = ' '
+  for (let i = 0; i < CELLS; i++) {
+    bufCh[i] = ' '
+    bufOutline[i] = true
+  }
 }
 
 function compose() {
@@ -1502,10 +1650,13 @@ function compose() {
     }
   }
 
-  // 小爱心：边飘边淡
+  // 小爱心：边飘边淡；浅色模式向浅粉淡，不要留下深色
   for (const h of model.hearts) {
     const k = h.age / h.life
-    put(h.x, h.y, HEART.ch, mixHex(HEART.color, '#3a2230', Math.min(0.85, k)))
+    const light = model.theme !== 'dark'
+    const base = light ? '#d93a78' : HEART.color
+    const fade = light ? '#ffe4ef' : '#3a2230'
+    put(h.x, h.y, HEART.ch, mixHex(base, fade, Math.min(0.85, k)), false)
   }
 
   // 螃蟹走动踢起来的沙
@@ -1522,16 +1673,18 @@ const SURF_GLYPHS = ['~', '-', '~', "'", '~', '`']
 /** 水面：占两行，第一行密、第二行只留较高的波峰，形成往下淡出的过渡 */
 function drawSurface() {
   const s = model.t * 2.1
+  const surf = model.surface || { tilt: 0, heave: 0 }
   for (let c = 2; c < COLS - 2; c++) {
     const p = c - s
     const jitter = Math.sin(c * 12.9898 + 78.233) * 43758.5453
     const j = jitter - Math.floor(jitter)
     const base = Math.sin(p * 0.52) + Math.sin(p * 1.63 + 1.2) * 0.55 + Math.sin(p * 0.27 + 4.1) * 0.85
-    // 倒水激起的波纹：从落点往两边衰减（6 格左右），2 秒内平息
+    // 拖拽水流：整条水面倾斜 + 上下起伏；倒水波纹继续叠加
+    const tilt = surf.tilt * ((c - COLS / 2) / (COLS / 2))
     const kick = model.surfaceKick
     const dx = c - (model.surfaceCenter || COLS / 2)
     const env = kick > 0 ? kick * Math.exp(-(dx * dx) / 36) : 0
-    const n = base + (j - 0.5) * 0.9 * (1 + env * 1.1) + Math.sin(model.t * 9 + c * 1.3) * env * 0.6
+    const n = base + tilt + surf.heave + (j - 0.5) * 0.9 * (1 + env * 1.1) + Math.sin(model.t * 9 + c * 1.3) * env * 0.6
 
     if (n > 0.6) put(c, SURFACE_ROW, SURF_GLYPHS[c % SURF_GLYPHS.length], '#2a8f8a')
     else if (n > 0.2) put(c, SURFACE_ROW, SURF_GLYPHS[(c * 5 + 1) % SURF_GLYPHS.length], '#1c5f63')
@@ -1539,7 +1692,7 @@ function drawSurface() {
     // 第二行：整组相位挪开，让它的波峰落在第一行的空隙里，看起来才是往下散开
     const q = p + 3.1
     const n2 =
-      Math.sin(q * 0.52) + Math.sin(q * 1.63 + 1.2) * 0.55 + Math.sin(q * 0.27 + 4.1) * 0.85 + (j - 0.5) * 0.9
+      Math.sin(q * 0.52) + Math.sin(q * 1.63 + 1.2) * 0.55 + Math.sin(q * 0.27 + 4.1) * 0.85 + (j - 0.5) * 0.9 + surf.heave * 0.7
     if (n2 > 0.95) put(c, SURFACE_ROW + 1, SURF_GLYPHS[(c * 3 + 1) % SURF_GLYPHS.length], '#174d52')
   }
 }
@@ -1556,7 +1709,8 @@ function drawPlants() {
       const t = (k + 1) / pl.h
       const wave = Math.sin(model.t * pl.rate + pl.phase - k * 0.3) * pl.amp * t
       const off = Math.round(wave + pl.push * Math.pow(t, 1.15))
-      const r = SEABED_ROW - 1 - k
+      const lift = Math.round((pl.flowY || 0) * Math.pow(t, 1.4))
+      const r = SEABED_ROW - 1 - k + lift
       const idx = off > 0 ? 2 : off < 0 ? 1 : 0
       let ch = k === 0 ? '|' : idx === 0 ? '|' : idx === 2 ? ')' : '('
       if (pl.bud && k === pl.h - 1) ch = '°'
@@ -1580,7 +1734,7 @@ function drawCrab() {
   crabGlyphs = []
   const crab = model.crab
   const x = Math.round(crab.x)
-  const y = Math.round(crab.y)
+  const y = Math.round(crab.y - (crab.air || 0))
   const asleep = crab.mode === 'sleep' && crab.pinch <= 0
   const by = asleep ? y + 1 : y // 蹲下去：整只降一行，正好坐在沙面上
   const pinching = crab.pinch > 0
@@ -1689,6 +1843,7 @@ function drawGrid() {
     for (let c = 0; c < COLS; c++) {
       const ch = bufCh[r * COLS + c]
       if (ch === ' ') continue
+      if (!bufOutline[r * COLS + c]) continue
       ctx.fillText(ch, pad + c * cellW + halfX, y)
     }
   }
@@ -1915,10 +2070,17 @@ function drawTankBackdrop() {
   ctx.closePath()
 
   const grad = ctx.createLinearGradient(0, waterTop, 0, bottom)
-  grad.addColorStop(0, 'rgba(10, 44, 50, 0.015)')
-  grad.addColorStop(0.25, 'rgba(10, 44, 50, 0.045)')
-  grad.addColorStop(0.6, 'rgba(10, 44, 50, 0.09)')
-  grad.addColorStop(1, 'rgba(8, 38, 46, 0.14)')
+  if (model.theme === 'dark') {
+    grad.addColorStop(0, 'rgba(8, 38, 45, 0.055)')
+    grad.addColorStop(0.25, 'rgba(8, 38, 45, 0.11)')
+    grad.addColorStop(0.6, 'rgba(7, 34, 42, 0.19)')
+    grad.addColorStop(1, 'rgba(6, 28, 36, 0.27)')
+  } else {
+    grad.addColorStop(0, 'rgba(10, 44, 50, 0.015)')
+    grad.addColorStop(0.25, 'rgba(10, 44, 50, 0.045)')
+    grad.addColorStop(0.6, 'rgba(10, 44, 50, 0.09)')
+    grad.addColorStop(1, 'rgba(8, 38, 46, 0.14)')
+  }
   ctx.fillStyle = grad
   ctx.fill()
 
@@ -1926,7 +2088,7 @@ function drawTankBackdrop() {
   ctx.beginPath()
   ctx.moveTo(x, waterTop + 0.5)
   ctx.lineTo(right, waterTop + 0.5)
-  ctx.strokeStyle = 'rgba(120, 255, 244, 0.08)'
+  ctx.strokeStyle = model.theme === 'dark' ? 'rgba(130, 255, 244, 0.16)' : 'rgba(120, 255, 244, 0.08)'
   ctx.lineWidth = 1
   ctx.stroke()
 }
@@ -1968,8 +2130,16 @@ function loop(now) {
   if (!running) return
   requestAnimationFrame(loop)
   if (!last) last = now
-  acc += now - last
+  const delta = Math.min(now - last, 120)
   last = now
+  // 拖拽窗口时窗口会不断清空画布：改为每个显示帧重绘，鱼继续动，也不留黑帧
+  if (draggingWindow) {
+    acc = 0
+    step(delta / 1000)
+    paint()
+    return
+  }
+  acc += delta
   if (acc < FRAME_MS) return
   const dt = Math.min(acc, 120) / 1000
   acc = 0
@@ -2071,7 +2241,14 @@ const MENU_ITEMS = [
     ],
   },
   { sep: true },
-  { act: 'theme', label: '深色模式', toggle: true },
+  {
+    row: '',
+    inline: true,
+    options: [
+      { act: 'theme', label: '深色' },
+      { act: 'frost', label: '磨砂' },
+    ],
+  },
   { act: 'top', label: '总在最前', toggle: true },
   { sep: true },
   { act: 'manual', label: '用户手册' },
@@ -2086,14 +2263,16 @@ function buildMenu() {
       menuEl.appendChild(document.createElement('hr'))
       continue
     }
-    // 尺寸：一行标题 + 一排单选圆点
-    if (item.row) {
+    // 单选行：有 row 时显示标题，没有 row 时只放圆点
+    if (item.options) {
       const row = document.createElement('div')
-      row.className = 'menu-row'
-      const head = document.createElement('span')
-      head.className = 'menu-row-head'
-      head.textContent = item.row
-      row.appendChild(head)
+      row.className = 'menu-row' + (item.inline ? ' is-inline' : '') + (item.row ? '' : ' is-plain')
+      if (item.row) {
+        const head = document.createElement('span')
+        head.className = 'menu-row-head'
+        head.textContent = item.row
+        row.appendChild(head)
+      }
       const opts = document.createElement('div')
       opts.className = 'menu-row-opts'
       for (const opt of item.options) {
@@ -2127,7 +2306,7 @@ function refreshMenuState() {
   const nonClown = model.fish.filter((f) => f.temper !== 'clown').length
   for (const btn of menuEl.querySelectorAll('button')) {
     const act = btn.dataset.act
-    const on = (act === 'top' && model.alwaysOnTop) || (act === 'theme' && model.theme === 'dark')
+    let on = (act === 'top' && model.alwaysOnTop) || (act === 'theme' && model.theme === 'dark')
     btn.classList.toggle('is-on', on)
     // 尺寸单选：当前档亮起来
     if (act.startsWith('size:')) {
@@ -2186,12 +2365,24 @@ function buildFishStatus() {
 
     row.append(id, look, sat)
     row.dataset.act = 'glow:' + f.id
+    row.dataset.fishId = String(f.id)
     row.tabIndex = 0
     row.setAttribute('role', 'button')
     row.setAttribute('aria-label', '让这条鱼呼吸一下')
     list.appendChild(row)
   }
   menuEl.appendChild(list)
+}
+
+function updateFishStatusRow(f) {
+  // 列表 DOM 还在就更新；不要依赖 menuOpen——
+  // 点鱼缸喂食时菜单可能已逻辑关闭，但状态页仍可见。
+  const row = menuEl.querySelector('.fish-status-row[data-fish-id="' + f.id + '"]')
+  if (!row) return
+  const sat = row.querySelector('.fish-status-sat')
+  if (!sat) return
+  sat.textContent = Math.round(f.satiety) + '%'
+  sat.style.color = satTone(f.satiety)
 }
 
 menuEl.addEventListener('click', (e) => {
@@ -2201,37 +2392,81 @@ menuEl.addEventListener('click', (e) => {
   runAction(target.dataset.act)
 })
 
-let menuBox = null
+let menuStack = []
+let menuFrame = null
 
-function ensureMenuBox() {
-  if (menuBox) return
+const MENU_ROUTES = {
+  main: { parent: null, build: buildMenu, className: '' },
+  status: { parent: 'main', build: buildFishStatus, className: 'fish-status-page' },
+}
+
+function menuPathFor(page) {
+  const path = []
+  let cur = MENU_ROUTES[page] ? page : 'main'
+  const seen = new Set()
+  while (cur && MENU_ROUTES[cur] && !seen.has(cur)) {
+    seen.add(cur)
+    path.unshift(cur)
+    cur = MENU_ROUTES[cur].parent
+  }
+  if (path[0] !== 'main') path.unshift('main')
+  return path
+}
+
+function isMenuOpen() {
+  return !menuEl.hidden && menuStack.length > 0
+}
+
+function currentMenuPage() {
+  return menuStack[menuStack.length - 1] || null
+}
+
+function isMenuPage(page) {
+  return isMenuOpen() && currentMenuPage() === page
+}
+
+function isMenuRoot() {
+  return isMenuOpen() && menuStack.length === 1
+}
+
+function ensureMenuFrame() {
+  if (menuFrame) return menuFrame
   const wasHidden = menuEl.hidden
   menuEl.hidden = false
   menuEl.classList.remove('fish-status-page')
   menuEl.style.width = ''
   menuEl.style.height = ''
   buildMenu()
-  menuBox = { w: menuEl.offsetWidth, h: menuEl.offsetHeight }
+  menuFrame = { w: menuEl.offsetWidth, h: menuEl.offsetHeight }
   menuEl.hidden = wasHidden
+  return menuFrame
 }
 
 function renderMenuPage(page) {
-  ensureMenuBox()
-  menuEl.classList.toggle('fish-status-page', page === 'status')
-  if (page === 'status') {
-    buildFishStatus()
-  } else {
-    buildMenu()
-    refreshMenuState()
-  }
-  menuEl.style.width = menuBox.w + 'px'
-  menuEl.style.height = menuBox.h + 'px'
+  const route = MENU_ROUTES[page] || MENU_ROUTES.main
+  const frame = ensureMenuFrame()
+  menuEl.classList.toggle('fish-status-page', route.className === 'fish-status-page')
+  route.build()
+  // 恢复旧版：主菜单量一次共享 frame，所有页面/鱼缸尺寸共用。
+  // 鱼状态用固定 8 行网格在同一个高度里分配间距。
+  menuEl.style.width = frame.w + 'px'
+  menuEl.style.height = frame.h + 'px'
+  // 内容没有真的超出时不要留滚动条；小尺寸/状态页确实溢出才启用
+  menuEl.style.overflowY = 'hidden'
+  if (menuEl.scrollHeight > menuEl.clientHeight + 1) menuEl.style.overflowY = 'auto'
+  menuEl.scrollTop = 0
+}
+
+function showMenuRoute(page) {
+  const target = MENU_ROUTES[page] ? page : 'main'
+  menuStack = menuPathFor(target)
+  model.menuOpen = true
+  menuEl.hidden = false
+  renderMenuPage(target)
 }
 
 function openMenuAt(px, py, page = 'main') {
-  renderMenuPage(page)
-  model.menuOpen = true
-  menuEl.hidden = false
+  showMenuRoute(page)
   const w = menuEl.offsetWidth
   const h = menuEl.offsetHeight
   // 菜单比窗口还高时（小尺寸）：贴到 0，剩下的靠菜单内部滚动
@@ -2243,12 +2478,19 @@ function openMenuAt(px, py, page = 'main') {
   menuEl.style.top = Math.round(top) + 'px'
 }
 
-function showMenuPage(page) {
-  renderMenuPage(page)
+function navigateMenu(page) {
+  if (!MENU_ROUTES[page]) return
+  showMenuRoute(page)
+}
+
+function backMenu() {
+  if (menuStack.length > 1) menuStack.pop()
+  else { closeMenu(); return }
+  showMenuRoute(currentMenuPage())
 }
 
 function closeMenu() {
-  if (!model.menuOpen) return
+  menuStack = []
   model.menuOpen = false
   menuEl.hidden = true
 }
@@ -2276,7 +2518,7 @@ function updateFishTag() {
   fishTagEl.textContent = String(taggedFish.id).padStart(2, '0') + '  SAT ' + Math.round(taggedFish.satiety) + '%'
   fishTagEl.style.left = Math.round(clamp(cx, 34, view.w - 34)) + 'px'
   fishTagEl.style.top = Math.round(clamp(cy - 5, 28, view.h - 6)) + 'px'
-  fishTagEl.style.color = satTone(taggedFish.satiety)
+  fishTagEl.style.color = tagTone(taggedFish.satiety)
   fishTagEl.hidden = false
 }
 
@@ -2292,7 +2534,7 @@ function toggleFishTag(f) {
 }
 
 function toggleMenuAt(px, py) {
-  if (model.menuOpen) closeMenu()
+  if (isMenuOpen()) closeMenu()
   else openMenuAt(px, py)
 }
 
@@ -2304,17 +2546,17 @@ function runAction(act) {
     return
   }
   if (act === 'fish-status') {
-    showMenuPage('status')
+    navigateMenu('status')
     return
   }
   if (act === 'back') {
-    showMenuPage('main')
+    backMenu()
     return
   }
   if (act === 'feed') {
     for (let i = 0; i < 18; i++) spawnPellet(rand(4, COLS - 5), rand(WATER_TOP + 0.5, WATER_TOP + 3))
   } else if (act === 'add') {
-    addFish()
+    addFish(null, Math.round(rand(18, 25)))
     save()
   } else if (act === 'remove') {
     // 小丑鱼保底：捞走别的鱼，它留着
@@ -2355,6 +2597,9 @@ function runAction(act) {
     window.aq.setTheme(model.theme)
     refreshMenuState()
     return
+  } else if (act === 'frost') {
+    // 磨砂功能暂未接入，保留菜单入口
+    return
   } else if (act.startsWith('size:')) {
     applySize(act.slice(5))
     return
@@ -2388,13 +2633,9 @@ canvas.addEventListener('pointerdown', (e) => {
     suppressPointer = false
     return
   }
-  if (model.menuOpen) {
-    closeMenu()
-    return
-  }
   const pt = localPoint(e)
   updateHover(pt)
-  down = { sx: e.screenX, sy: e.screenY, x: pt.x, y: pt.y, moved: false }
+  down = { sx: e.screenX, sy: e.screenY, x: pt.x, y: pt.y, moved: false, startedAt: performance.now(), waterT: performance.now(), waterX: e.screenX, waterY: e.screenY }
   try {
     canvas.setPointerCapture(e.pointerId)
   } catch (err) {
@@ -2405,16 +2646,32 @@ canvas.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('pointermove', (e) => {
   const pt = localPoint(e)
   updateHover(pt)
-  if (!down || down.moved) return
-  const dx = e.screenX - down.sx
-  const dy = e.screenY - down.sy
-  if (dx * dx + dy * dy >= DRAG_SQ) {
+  if (!down) return
+  if (!down.moved) {
+    const dx = e.screenX - down.sx
+    const dy = e.screenY - down.sy
+    if (dx * dx + dy * dy < DRAG_SQ) return
     down.moved = true
-    closeMenu()
+    draggingWindow = true
     canvas.style.cursor = 'grabbing'
     model.stats.dragStarts++
     window.aq.dragStart()
   }
+  // 按真实拖拽速度给水，不按每次位移累积；慢移不产生水流
+  const dx = e.screenX - down.waterX
+  const dy = e.screenY - down.waterY
+  const now = performance.now()
+  const waterDt = Math.max(0.008, (now - down.waterT) / 1000)
+  down.waterT = now
+  down.waterX = e.screenX
+  down.waterY = e.screenY
+  if (!dx && !dy) return
+  const vx = dx / layout.cellW / waterDt
+  const vy = dy / layout.cellH / waterDt
+  const speed = Math.hypot(vx, vy)
+  const gain = waterGain(speed)
+  model.water.vx = clamp(model.water.vx - vx * 0.02 * gain, -WATER.maxX, WATER.maxX)
+  model.water.vy = clamp(model.water.vy - vy * 0.02 * gain, -WATER.maxY, WATER.maxY)
 })
 
 canvas.addEventListener('pointerleave', () => {
@@ -2430,15 +2687,33 @@ function endPointer(e, cancelled) {
   }
   const wasDrag = down.moved
   const { x, y, sx, sy } = down
+  const elapsed = Math.max(0.12, (performance.now() - down.startedAt) / 1000)
   down = null
   if (wasDrag) {
+    // 快速拖拽 pointermove 采样很少，松手时按整段平均速度补一次释放冲量
+    const dragVx = ((e.screenX - sx) / layout.cellW) / elapsed
+    const dragVy = ((e.screenY - sy) / layout.cellH) / elapsed
+    const dragSpeed = Math.hypot(dragVx, dragVy)
+    if (dragSpeed >= WATER.ref) {
+      // 达到满档速度：给一个短促的超调冲击，再自然衰减
+      const k = 1 / Math.max(dragSpeed, 1)
+      model.water.vx = -dragVx * k * WATER.maxX * WATER.burst
+      model.water.vy = -dragVy * k * WATER.maxY * WATER.burst
+      model.surfaceKick = Math.max(model.surfaceKick, WATER.surfaceKick)
+    } else {
+      const gain = waterGain(dragSpeed)
+      model.water.vx = clamp(model.water.vx - dragVx * 0.1 * gain, -WATER.maxX, WATER.maxX)
+      model.water.vy = clamp(model.water.vy - dragVy * 0.1 * gain, -WATER.maxY, WATER.maxY)
+    }
     model.stats.dragEnds++
     window.aq.dragEnd()
+    draggingWindow = false
     updateHover(localPoint(e))
     return
   }
   if (cancelled) return
-  if (model.menuOpen) {
+  // 主菜单外点：松手且没有发生拖拽才关闭
+  if (isMenuRoot()) {
     closeMenu()
     return
   }
@@ -2455,11 +2730,13 @@ canvas.addEventListener('contextmenu', (e) => {
   const { c, r } = cellAt(pt.x, pt.y)
   const f = fishAt(c, r)
   if (f) {
-    closeMenu()
+    if (isMenuRoot()) closeMenu()
     toggleFishTag(f)
     return
   }
   hideFishTag()
+  // 任何子菜单页右键外面都不切换菜单
+  if (isMenuOpen() && !isMenuRoot()) return
   toggleMenuAt(pt.x, pt.y)
 })
 
@@ -2467,10 +2744,14 @@ canvas.addEventListener('contextmenu', (e) => {
 document.addEventListener(
   'pointerdown',
   (e) => {
-    if (!model.menuOpen) return
+    if (!isMenuOpen()) return
     // 右键交给 contextmenu 做开关；只让左键负责“点外面收起”
     if (e.button !== 0) return
     if (e.target && e.target.closest && e.target.closest('#menu')) return
+    // 画布上的主菜单点击要等 pointerup 判断是点击还是拖拽
+    if (e.target === canvas) return
+    // 只有根菜单的非画布外点才立即收起；状态页/子菜单保留
+    if (!isMenuRoot()) return
     closeMenu()
     suppressPointer = true
   },
@@ -2482,22 +2763,19 @@ document.addEventListener('keydown', (e) => {
 })
 
 window.addEventListener('blur', () => {
-  closeMenu()
+  // 拖拽中主进程会调整窗口，可能触发 blur；拖拽中不要收菜单
+  if (!draggingWindow && isMenuRoot()) closeMenu()
   model.cursor.inside = false
   if (down && down.moved) {
-    down.moved = false
+    down = null
     window.aq.dragEnd()
+    draggingWindow = false
   }
 })
 
 // ---------------------------------------------------------------- 存档
 
-let saveTimer = null
 function save() {
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = null
-  }
   window.aq.save({
     fishCount: model.fish.length,
     fish: model.fish.map(fishProfile),
