@@ -24,6 +24,7 @@ const DEFAULT_STATE = {
   y: null,
   size: 'medium',
   theme: 'clear',
+  effects: [],
   // 第一次启动（没有 state.json）时给 4：刚好跌破 5，鱼一出来就是"饿坏了"（头顶 ! 、底栏闪红）
   // 之后就全听存档的，不会再重置
   satiety: 4,
@@ -241,11 +242,9 @@ function createWindow() {
     }
   })
 
-  const createdWindow = win
   win.on('closed', () => {
     stopDrag()
-    // 重建窗口时，旧窗口的 closed 不能把新 win 清空
-    if (win === createdWindow) win = null
+    win = null
   })
 }
 
@@ -395,7 +394,7 @@ async function runCapture(target) {
         await new Promise((r) => setTimeout(r, 150))
         const menuAfterDrag = M.menuOpen
         cv.dispatchEvent(new MouseEvent('contextmenu', { clientX: 210, clientY: 170, bubbles: true, cancelable: true }))
-        const menuAfterRightClick = M.menuOpen
+        const menuAfterRightClick = window.__aq.menuOpen()
         const menuItems = document.querySelectorAll('#menu button').length
         // 真实右键会先发 pointerdown 再发 contextmenu；只发 contextmenu 测不出
         // "捕获阶段先 closeMenu、contextmenu 又 open" 这个 bug
@@ -404,7 +403,7 @@ async function runCapture(target) {
           bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', isPrimary: true,
         }))
         cv.dispatchEvent(new MouseEvent('contextmenu', { clientX: 210, clientY: 170, bubbles: true, cancelable: true }))
-        const menuAfterSecondRightClick = M.menuOpen
+        const menuAfterSecondRightClick = window.__aq.menuOpen()
 
         // 小丑鱼保底：首条一定是它，捞鱼不会把它捞走（要在改性格之前测）
         const hasClown = M.fish.length > 0 && M.fish[0].temper === 'clown'
@@ -577,9 +576,9 @@ async function runCapture(target) {
 
         // 深色外壳可以来回切（不假定起始是哪种，切两次要回到原样）
         const theme0 = M.theme
-        window.__aq.runAction('theme')
+        window.__aq.runAction('theme:' + (theme0 === 'dark' ? 'clear' : 'dark'))
         const theme1 = M.theme
-        window.__aq.runAction('theme')
+        window.__aq.runAction('theme:' + theme0)
         const theme2 = M.theme
         const themeOk = theme1 !== theme0 && theme2 === theme0
 
@@ -910,7 +909,7 @@ async function runCapture(target) {
     if (process.argv.includes('--dark')) {
       // 走真实入口，而不是直接改 model（那样不会切 body 的 dark 类）
       await win.webContents.executeJavaScript(
-        "window.__aq.model.theme === 'dark' ? true : window.__aq.runAction('theme')",
+        "window.__aq.setTheme('dark'), true",
       )
       await wait(400)
     }
@@ -1006,9 +1005,7 @@ async function runCapture(target) {
     }    if (process.argv.includes('--clear') || process.argv.includes('--light')) {
       // 截图用：强制透明外壳（不然会跟着存档里的深色模式走）
       await win.webContents.executeJavaScript(`(() => {
-        const M = window.__aq.model
-        M.theme = 'clear'
-        document.body.classList.remove('dark')
+        window.__aq.setTheme('clear')
         return true
       })()`)
       await wait(350)
@@ -1112,6 +1109,44 @@ function applyWindowSize(name) {
   return layout
 }
 
+function pluginsDir() {
+  // 和 app/ 同级，方便用户直接找到；主题包只是 plugins/themes 一种
+  return path.join(__dirname, '..', 'plugins')
+}
+
+function themesDir() {
+  return path.join(pluginsDir(), 'themes')
+}
+
+function listThemePacks() {
+  const dir = themesDir()
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+    return fs
+      .readdirSync(dir)
+      .filter((name) => name.toLowerCase().endsWith('.json'))
+      .slice(0, 40)
+      .flatMap((name) => {
+        try {
+          const file = path.join(dir, name)
+          if (fs.statSync(file).size > 64 * 1024) return []
+          const data = JSON.parse(fs.readFileSync(file, 'utf8'))
+          return data && typeof data === 'object' ? [data] : []
+        } catch (err) {
+          return []
+        }
+      })
+  } catch (err) {
+    return []
+  }
+}
+
+async function openThemesFolder() {
+  const dir = themesDir()
+  fs.mkdirSync(path.join(dir, 'templates'), { recursive: true })
+  return shell.openPath(dir)
+}
+
 function registerIpc() {
   ipcMain.handle('aq:load', () => ({
     state: { ...state },
@@ -1170,10 +1205,20 @@ function registerIpc() {
   ipcMain.handle('aq:set-size', (_e, name) => applyWindowSize(name))
 
   ipcMain.handle('aq:theme', (_e, value) => {
-    state.theme = value === 'dark' ? 'dark' : 'clear'
+    state.theme = typeof value === 'string' && /^[a-z0-9-]{2,24}$/.test(value) ? value : 'clear'
     saveState()
     return state.theme
   })
+
+  ipcMain.handle('aq:effects', (_e, value) => {
+    const allowed = new Set(['scanline'])
+    state.effects = Array.isArray(value) ? [...new Set(value.filter((id) => allowed.has(id)))] : []
+    saveState()
+    return state.effects
+  })
+
+  ipcMain.handle('aq:theme-packs', () => listThemePacks())
+  ipcMain.handle('aq:themes-folder', () => openThemesFolder())
 
   ipcMain.handle('aq:top', (_e, value) => {
     const on = !!value

@@ -3,6 +3,13 @@
   --cy: #6ef9ff;
   --cy-dim: #1f8f8a;
   --ink: #020609;
+  --menu-bg: linear-gradient(180deg, rgba(6, 22, 26, 0.68), rgba(3, 12, 16, 0.56));
+  --menu-border: rgba(110, 249, 255, 0.34);
+  --menu-text: #c9fbf6;
+  --menu-accent: #6ef9ff;
+  --menu-hover: rgba(110, 249, 255, 0.14);
+  --tag-border: rgba(8, 82, 86, 0.22);
+  --tag-shadow: 0 1px 2px rgba(255, 255, 255, 0.85);
 }
 
 * {
@@ -23,10 +30,113 @@ body {
   font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
 }
 
-/* 深色外壳：在页面最底层铺一层底色（画布是它的子元素，本身保持透明，
-   鱼缸的辉光才透得出来）。颜色取自 说明书.html 背景的最深处 #061417 */
-body.dark {
-  background-color: rgba(6, 20, 23, 0.78);
+/* 主题底色和效果层都按鱼缸边框裁成圆角，避免矩形底色露在外面 */
+#theme-backdrop {
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+  background: transparent;
+  overflow: hidden;
+}
+
+#effect-layer {
+  position: fixed;
+  z-index: 2;
+  display: none;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+body[data-effects~='scanline'] #effect-layer {
+  display: block;
+}
+
+body[data-tone='dark'] {
+  --tag-border: rgba(110, 249, 255, 0.22);
+  --tag-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+/* 扫描线是独立效果：不绑定主题底色 */
+body[data-effects~='scanline'] #tank {
+  filter:
+    drop-shadow(0.65px 0 0 rgba(255, 35, 105, 0.32))
+    drop-shadow(-0.65px 0 0 rgba(35, 225, 255, 0.32))
+    drop-shadow(0 0 5px rgba(110, 249, 255, 0.58))
+    drop-shadow(0 0 14px rgba(60, 200, 255, 0.2));
+}
+
+#effect-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 52%, rgba(0, 0, 0, 0.58) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.3'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.028) 0,
+      rgba(255, 255, 255, 0.028) 1px,
+      rgba(0, 0, 0, 0.16) 1px,
+      rgba(0, 0, 0, 0.16) 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 35, 105, 0.026) 0,
+      rgba(255, 35, 105, 0.026) 1px,
+      rgba(35, 225, 255, 0.026) 1px,
+      rgba(35, 225, 255, 0.026) 2px,
+      rgba(180, 255, 120, 0.018) 2px,
+      rgba(180, 255, 120, 0.018) 3px
+    );
+  opacity: 0.52;
+  animation: aq-crt-flicker 0.22s steps(2, end) infinite;
+}
+
+#effect-layer::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12%;
+  height: 22%;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(185, 255, 255, 0.045) 35%,
+    rgba(120, 245, 255, 0.08) 50%,
+    rgba(120, 245, 255, 0.02) 68%,
+    transparent
+  );
+  mix-blend-mode: screen;
+  animation: aq-scan-sweep 7.5s linear infinite;
+}
+
+@keyframes aq-scan-sweep {
+  to {
+    transform: translateY(540%);
+  }
+}
+
+@keyframes aq-crt-flicker {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.54;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-effects~='scanline']::before,
+  body[data-effects~='scanline']::after {
+    animation: none;
+  }
+  body[data-effects~='scanline']::after {
+    top: 42%;
+  }
 }
 
 #tank {
@@ -45,18 +155,30 @@ body.dark {
   min-width: 124px;
   padding: 4px;
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(6, 22, 26, 0.68), rgba(3, 12, 16, 0.56));
-  border: 1px solid rgba(110, 249, 255, 0.34);
+  background-image: var(--menu-bg);
+  border: 1px solid var(--menu-border);
   box-shadow:
     0 10px 26px rgba(0, 0, 0, 0.55),
     0 0 18px rgba(40, 210, 255, 0.12),
     inset 0 0 0 1px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(2px);
-  color: #c9fbf6;
+  color: var(--menu-text);
   font-size: 11px;
   line-height: 1;
   transform-origin: top left;
   animation: aq-pop 0.105s ease-out;
+}
+
+body[data-effects~='scanline'] #menu {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    var(--menu-bg);
 }
 
 #menu[hidden] {
@@ -69,24 +191,24 @@ body.dark {
   pointer-events: none;
   padding: 2px 6px;
   border-radius: 6px;
-  border: 1px solid rgba(8, 82, 86, 0.22);
+  border: 1px solid var(--tag-border);
   background: transparent;
   box-shadow: none;
   color: #0b6b64;
   font-size: 10px;
   line-height: 1.15;
   white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.85);
+  text-shadow: var(--tag-shadow);
   transform: translate(-50%, -100%);
   backdrop-filter: blur(4px);
 }
 
-body.dark #fish-tag {
-  border-color: rgba(110, 249, 255, 0.22);
+body[data-tone='dark'] #fish-tag {
+  border-color: var(--tag-border);
   background: transparent;
   box-shadow: none;
   color: #9ffcff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  text-shadow: var(--tag-shadow);
 }
 
 #fish-tag[hidden] {
@@ -137,12 +259,12 @@ body.dark #fish-tag {
 }
 
 #menu button:hover {
-  background: rgba(110, 249, 255, 0.14);
-  color: #eafffd;
+  background: var(--menu-hover);
+  color: var(--menu-text);
 }
 
 #menu button .tick {
-  color: var(--cy);
+  color: var(--menu-accent);
   opacity: 0;
   font-size: 10px;
 }
@@ -199,13 +321,13 @@ body.dark #fish-tag {
 }
 
 #menu button.dot.is-on {
-  background: rgba(110, 249, 255, 0.14);
-  color: #eafffd;
+  background: var(--menu-hover);
+  color: var(--menu-text);
 }
 
 #menu button.dot.is-on::before {
   content: '●';
-  color: var(--cy);
+  color: var(--menu-accent);
 }
 
 #menu button:disabled {
@@ -238,7 +360,7 @@ body.dark #fish-tag {
   gap: 4px;
   width: 100%;
   margin-bottom: 8px;
-  color: #8fd8ff;
+  color: var(--menu-accent);
 }
 
 #menu.fish-status-page {
@@ -324,47 +446,64 @@ body.dark #fish-tag {
     height: 16px;
   }
 }
-/* 背景这一行：标题和两个圆点并排，尺寸行仍保持上下布局 */
-#menu .menu-row.is-inline {
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px 3px;
+/* 主题子菜单：与鱼状态页共用导航栈 */
+#menu.theme-page {
+  display: flex;
+  flex-direction: column;
 }
 
-#menu .menu-row.is-inline .menu-row-head {
+#menu.theme-page .menu-back {
   flex: none;
 }
 
-#menu .menu-row.is-inline .menu-row-opts {
-  gap: 2px;
-}
-
-#menu .menu-row.is-inline button.dot {
-  padding: 0 3px;
-}
-
-#menu .menu-row.is-plain {
-  padding: 2px 4px 3px;
-}
-
-#menu .menu-row.is-plain .menu-row-opts {
-  width: 100%;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 7px;
-  background: rgba(0, 0, 0, 0.16);
-}
-
-#menu .menu-row.is-plain button.dot {
+#menu .theme-list {
   flex: 1;
-  justify-content: flex-start;
-  padding: 0 6px;
-  border: 0;
-  background: transparent;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 0;
 }
 
-#menu .menu-row.is-plain button.dot.is-on {
-  background: rgba(110, 249, 255, 0.15);
-  box-shadow: inset 0 0 0 1px rgba(110, 249, 255, 0.22);
+#menu .theme-section {
+  margin: 5px 6px 2px;
+  color: var(--menu-accent);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
+
+#menu button.theme-choice {
+  justify-content: flex-start;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  gap: 6px;
+  color: var(--menu-text);
+}
+
+#menu button.theme-choice::before {
+  content: '○';
+  font-size: 9px;
+  color: var(--menu-border);
+}
+
+#menu button.theme-choice.is-on {
+  background: var(--menu-hover);
+  color: var(--menu-text);
+}
+
+#menu button.theme-choice.is-on::before {
+  content: '●';
+  color: var(--menu-accent);
+}
+
+#menu button.theme-pack {
+  flex: none;
+  width: 100%;
+  justify-content: flex-start;
+  margin-top: 4px;
+  padding: 0 8px;
+  border-top: 1px solid var(--menu-border);
+  color: var(--menu-accent);
 }

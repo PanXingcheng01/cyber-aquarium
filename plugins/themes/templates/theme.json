@@ -1,0 +1,29 @@
+{
+  "id": "amber",
+  "label": "琥珀",
+  "tone": "dark",
+  "shell": {
+    "background": "#201408",
+    "menu": {
+      "background": "#1a1006",
+      "border": "#7a5426",
+      "text": "#ffe0a3",
+      "accent": "#ffb347"
+    },
+    "tag": {
+      "border": "#a8783c"
+    }
+  },
+  "scene": {
+    "palette": {
+      "fish": "#ffcc66",
+      "crab": "#ff9a3c",
+      "plants": "#88aa44",
+      "bubbles": "#ffd98a",
+      "pellets": "#ffaa00",
+      "dust": "#886633",
+      "sand": "#aa7744",
+      "hearts": "#ff6699"
+    }
+  }
+}

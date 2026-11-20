@@ -82,6 +82,53 @@ const P = {
   dust: '#1c6f74',
 }
 
+const THEMES = {
+  clear: {
+    label: '透明',
+    tone: 'light',
+    shell: {
+      background: 'transparent',
+      menu: { border: 'rgba(110, 249, 255, 0.34)', text: '#c9fbf6', accent: '#6ef9ff' },
+      tag: { border: 'rgba(8, 82, 86, 0.22)' },
+    },
+  },
+  dark: {
+    label: '深色',
+    tone: 'dark',
+    shell: {
+      background: 'rgba(6, 20, 23, 0.78)',
+      menu: { border: 'rgba(110, 249, 255, 0.34)', text: '#c9fbf6', accent: '#6ef9ff' },
+      tag: { border: 'rgba(110, 249, 255, 0.22)' },
+    },
+  },
+}
+
+// 效果与主题独立：效果可以叠加在任意主题上
+const EFFECTS = {
+  scanline: { label: '扫描线' },
+}
+
+// 场景实体表：新增会动/会画的东西先加这里，主题包调色板自动获得这个 key
+const SCENE_KINDS = {
+  fish: '鱼',
+  crab: '螃蟹',
+  plants: '水草',
+  bubbles: '气泡',
+  pellets: '鱼食',
+  dust: '沙尘',
+  sand: '沙粒',
+  hearts: '爱心',
+}
+
+function isDarkTheme(theme = model.theme) {
+  return (THEMES[theme] || THEMES.clear).tone === 'dark'
+}
+
+function themeColor(kind, fallback) {
+  const palette = THEMES[model.theme]?.scene?.palette
+  return palette && palette[kind] ? palette[kind] : fallback
+}
+
 // 品种 / 外形 / 配色数据在 fish-data.js，逻辑里只取视图
 const { SPECIES, BODIES, LOOKS, BODY_SIZE } = window.AQ_DATA
 const {
@@ -135,6 +182,8 @@ const canvas = document.getElementById('tank')
 const ctx = canvas.getContext('2d', { alpha: true })
 const menuEl = document.getElementById('menu')
 const fishTagEl = document.getElementById('fish-tag')
+const themeBackdropEl = document.getElementById('theme-backdrop')
+const effectLayerEl = document.getElementById('effect-layer')
 
 let layout = { cols: COLS, rows: ROWS, cellW: 7, cellH: 13, pad: 12, width: 409, height: 310 }
 const view = { w: 409, h: 310 }
@@ -169,10 +218,10 @@ const model = {
   freshT: 0, // 刚换过水：鱼会兴奋一小会儿
   cursor: { x: -1, y: -1, inside: false, stamp: 0 },
   t: 0,
-  menuOpen: false,
   crab: { x: 24, y: CRAB.y, yTarget: CRAB.y, rowT: 25, dir: 1, mode: 'wander', modeT: 2.5, pinch: 0, pinchFrom: 0, walk: 0, speed: 0, stride: 0, puffs: 1, dodgeDir: 0, exciteT: 0, escapeRow: false, air: 0 },
   // 拖拽产生的水流：独立二维状态，所有生物按注册的响应读取
   water: { vx: 0, vy: 0, energy: 0 },
+  effects: [],
   stats: { dragStarts: 0, dragEnds: 0, feeds: 0, scares: 0, paints: 0, pinches: 0, yields: 0, pets: 0 },
 }
 
@@ -182,6 +231,9 @@ const waterActors = []
 const WATER = {
   ref: 200,
   curve: 1.2,
+  shape: 2.2,
+  drag: 0.02,
+  release: 0.1,
   maxX: 8,
   maxY: 6,
   wake: 1.6,
@@ -189,12 +241,13 @@ const WATER = {
   surfaceKick: 1.6,
   pelletLift: 1.2,
 }
+const WATER_TOP_NORM = 1 - Math.exp(-WATER.curve)
 
 /** 无慢速死区的指数感知曲线：低速压得更低，200 格/秒到满档 */
 function waterGain(speed) {
   const x = Math.max(0, speed) / WATER.ref
-  const shaped = Math.pow(x, 2.2)
-  return clamp((1 - Math.exp(-WATER.curve * shaped)) / (1 - Math.exp(-WATER.curve)), 0, 1)
+  const shaped = Math.pow(x, WATER.shape)
+  return clamp((1 - Math.exp(-WATER.curve * shaped)) / WATER_TOP_NORM, 0, 1)
 }
 
 /** 生物/植物接入水流：以后新生物只注册，不改 stepWater；wake 可选 */
@@ -250,13 +303,16 @@ registerWaterActor(() => model.pellets, (p, water, dt) => {
   }
 })
 
+const crabActors = [model.crab]
+const surfaceActors = [model.surface]
+
 function wakeCrabWater(crab) {
   if (crab.mode !== 'sleep') return
   crab.mode = 'wander'
   crab.modeT = rand(2, 4)
 }
 
-registerWaterActor(() => [model.crab], (crab, water, dt) => {
+registerWaterActor(() => crabActors, (crab, water, dt) => {
   // 重，但强纵向水流能把它托离沙面；水停后强弹簧拉回 0（视觉上就是下落）
   crab.x = clamp(crab.x + water.vx * dt * 0.8, 2, CRAB.maxX)
   const liftTarget = clamp(-water.vy * 0.9, 0, 4)
@@ -264,7 +320,7 @@ registerWaterActor(() => [model.crab], (crab, water, dt) => {
   if (crab.air < 0.01) crab.air = 0
 }, wakeCrabWater)
 
-registerWaterActor(() => [model.surface], (surface, water, dt) => {
+registerWaterActor(() => surfaceActors, (surface, water, dt) => {
   const targetTilt = clamp(water.vx * 0.35, -2, 2)
   const targetHeave = clamp(water.vy * 0.35, -1.5, 1.5)
   surface.tilt += (targetTilt - surface.tilt) * Math.min(1, dt * 6)
@@ -317,9 +373,25 @@ function putText(c, r, text, color) {
 
 // ---------------------------------------------------------------- 尺寸
 
+function syncFrameLayers() {
+  const x = layout.pad - 6
+  const y = layout.pad - 6
+  const w = COLS * layout.cellW + 11
+  const h = ROWS * layout.cellH + 11
+  for (const el of [themeBackdropEl, effectLayerEl]) {
+    if (!el) continue
+    el.style.left = x + 'px'
+    el.style.top = y + 'px'
+    el.style.width = w + 'px'
+    el.style.height = h + 'px'
+    el.style.borderRadius = '9px'
+  }
+}
+
 function fitCanvas() {
   const w = Math.max(1, Math.round(document.documentElement.clientWidth))
   const h = Math.max(1, Math.round(document.documentElement.clientHeight))
+  syncFrameLayers()
   const dpr = window.devicePixelRatio || 1
   const cw = Math.round(w * dpr)
   const ch = Math.round(h * dpr)
@@ -594,28 +666,41 @@ function lowestSat() {
   return Math.min(...model.fish.map((f) => f.satiety))
 }
 
-function satTone(sat) {
-  if (sat < 5) return Math.floor(model.t * 3) % 2 === 0 ? '#ff4d4d' : '#5c1b1b'
+const SAT_COLORS = {
+  dark: {
+    blinkA: '#ff4d4d',
+    blinkB: '#5c1b1b',
+    tier3: '#ff4d4d',
+    alarm: P.hudAlarm,
+    warn: P.hudWarn,
+    ok: P.hud,
+  },
+  light: {
+    blinkA: '#b42318',
+    blinkB: '#e7b2ad',
+    tier3: '#b42318',
+    alarm: '#a33b0a',
+    warn: '#7a5200',
+    ok: '#0b6b64',
+  },
+}
+
+function satToneFor(sat, colors) {
+  if (sat < 5) return Math.floor(model.t * 3) % 2 === 0 ? colors.blinkA : colors.blinkB
   const tier = satTier(sat)
-  if (tier === 3) return '#ff4d4d'
-  if (sat < 20) return P.hudAlarm
-  if (sat < 45) return P.hudWarn
-  return P.hud
+  if (tier === 3) return colors.tier3
+  if (sat < 20) return colors.alarm
+  if (sat < 45) return colors.warn
+  return colors.ok
+}
+
+function satTone(sat) {
+  return satToneFor(sat, SAT_COLORS.dark)
 }
 
 /** 鱼头标签：浅色外壳上用深色字，深色外壳上用原来的亮色字 */
 function tagTone(sat) {
-  const dark = model.theme === 'dark'
-  if (sat < 5) {
-    return dark
-      ? (Math.floor(model.t * 3) % 2 === 0 ? '#ff4d4d' : '#5c1b1b')
-      : (Math.floor(model.t * 3) % 2 === 0 ? '#b42318' : '#e7b2ad')
-  }
-  const tier = satTier(sat)
-  if (tier === 3) return dark ? '#ff4d4d' : '#b42318'
-  if (sat < 20) return dark ? P.hudAlarm : '#a33b0a'
-  if (sat < 45) return dark ? P.hudWarn : '#7a5200'
-  return dark ? P.hud : '#0b6b64'
+  return satToneFor(sat, isDarkTheme() ? SAT_COLORS.dark : SAT_COLORS.light)
 }
 
 /** #rrggbb 之间线性混合 */
@@ -1621,12 +1706,12 @@ function compose() {
   for (const p of model.pellets) {
     // 消失前 3 秒才闪，不要从第 20 秒闪到 45 秒
     const fade = p.age > 42 && Math.floor(model.t * 4) % 2 === 0
-    put(p.x, p.y, fade ? '·' : '*', P.pellet)
+    put(p.x, p.y, fade ? '·' : '*', themeColor('pellets', P.pellet))
   }
 
   for (const b of model.bubbles) {
     const ch = b.y < WATER_TOP + 2 ? 'o' : '°'
-    put(b.x, b.y, ch, P.bubble)
+    put(b.x, b.y, ch, themeColor('bubbles', P.bubble))
   }
 
   // 鱼（越靠上层越暗，做出纵深）
@@ -1653,14 +1738,14 @@ function compose() {
   // 小爱心：边飘边淡；浅色模式向浅粉淡，不要留下深色
   for (const h of model.hearts) {
     const k = h.age / h.life
-    const light = model.theme !== 'dark'
-    const base = light ? '#d93a78' : HEART.color
+    const light = !isDarkTheme()
+    const base = themeColor('hearts', light ? '#d93a78' : HEART.color)
     const fade = light ? '#ffe4ef' : '#3a2230'
     put(h.x, h.y, HEART.ch, mixHex(base, fade, Math.min(0.85, k)), false)
   }
 
   // 螃蟹走动踢起来的沙
-  for (const p of model.sandPuffs) put(p.x, p.y, '·', CRAB.sand)
+  for (const p of model.sandPuffs) put(p.x, p.y, '·', themeColor('sand', CRAB.sand))
 
   // 螃蟹压在沙面上，所以在水草和鱼之后画（挡住草根那一截）
   drawCrab()
@@ -1698,13 +1783,15 @@ function drawSurface() {
 }
 
 function drawDust() {
-  for (const d of model.dust) put(d.x, d.y, '·', P.dust)
+  for (const d of model.dust) put(d.x, d.y, '·', themeColor('dust', P.dust))
 }
 
 /** 水草：摆动集中在梢部，逐行相位差很小，才像被水推着弯，而不是螺丝钉 */
 function drawPlants() {
   for (const pl of model.plants) {
     const tone = PLANT_TONES[pl.tone] || PLANT_TONES[0]
+    const plantColor = themeColor('plants', tone.color)
+    const plantDim = mixHex(tone.dim, plantColor, 0.3)
     for (let k = 0; k < pl.h; k++) {
       const t = (k + 1) / pl.h
       const wave = Math.sin(model.t * pl.rate + pl.phase - k * 0.3) * pl.amp * t
@@ -1714,7 +1801,7 @@ function drawPlants() {
       const idx = off > 0 ? 2 : off < 0 ? 1 : 0
       let ch = k === 0 ? '|' : idx === 0 ? '|' : idx === 2 ? ')' : '('
       if (pl.bud && k === pl.h - 1) ch = '°'
-      put(pl.x + off, r, ch, t < 0.45 ? tone.dim : tone.color)
+      put(pl.x + off, r, ch, t < 0.45 ? plantDim : plantColor)
     }
   }
 }
@@ -1741,6 +1828,12 @@ function drawCrab() {
   const snap = Math.floor(crab.pinch * 16) % 2 === 1
   const blink = !pinching && Math.floor(model.t * 3.2 + 2) % 9 === 3
   const flail = Math.floor(model.t * 8) % 2 === 0
+  const crabBody = themeColor('crab', CRAB.body)
+  const crabLeg = mixHex(CRAB.leg, crabBody, 0.3)
+  const crabClaw = mixHex(CRAB.claw, crabBody, 0.3)
+  const crabClawFlash = mixHex(CRAB.flash, crabBody, 0.2)
+  const crabEye = mixHex(CRAB.eye, crabBody, 0.15)
+  const crabEyeDim = mixHex(CRAB.eyeDim, crabBody, 0.2)
 
   let left = 'V'
   let right = 'V'
@@ -1760,24 +1853,24 @@ function drawCrab() {
     right = flail ? '/' : '\\'
   }
 
-  const clawCo = pinching ? CRAB.flash : CRAB.claw
+  const clawCo = pinching ? crabClawFlash : crabClaw
   const glyph = (gx, gy, ch, color) => {
     put(gx, gy, ch, color)
     crabGlyphs.push({ c: Math.round(gx), r: Math.round(gy), ch, color })
   }
 
   // 侧面两条折角腿：_ 贴地、/ \ 撑着壳
-  glyph(x, by, '_', CRAB.leg)
-  glyph(x + 1, by, '/', CRAB.leg)
-  glyph(x + 7, by, '\\', CRAB.leg)
-  glyph(x + 8, by, '_', CRAB.leg)
+  glyph(x, by, '_', crabLeg)
+  glyph(x + 1, by, '/', crabLeg)
+  glyph(x + 7, by, '\\', crabLeg)
+  glyph(x + 8, by, '_', crabLeg)
 
   // 壳：拱顶 (_^_)
-  glyph(x + 2, by, '(', CRAB.body)
-  glyph(x + 3, by, '_', CRAB.body)
-  glyph(x + 4, by, '^', CRAB.body)
-  glyph(x + 5, by, '_', CRAB.body)
-  glyph(x + 6, by, ')', CRAB.body)
+  glyph(x + 2, by, '(', crabBody)
+  glyph(x + 3, by, '_', crabBody)
+  glyph(x + 4, by, '^', crabBody)
+  glyph(x + 5, by, '_', crabBody)
+  glyph(x + 6, by, ')', crabBody)
 
   // 钳子：抬在壳上面一行，最左最右各一只
   glyph(x, by - 1, left, clawCo)
@@ -1785,11 +1878,11 @@ function drawCrab() {
 
   // 眼睛：壳正上方两个点；睡着时闭成两条短横，眨眼时整帧不画
   if (asleep) {
-    glyph(x + 3, by - 1, '-', CRAB.eyeDim)
-    glyph(x + 5, by - 1, '-', CRAB.eyeDim)
+    glyph(x + 3, by - 1, '-', crabEyeDim)
+    glyph(x + 5, by - 1, '-', crabEyeDim)
   } else if (!blink) {
-    glyph(x + 3, by - 1, '.', CRAB.eye)
-    glyph(x + 5, by - 1, '.', CRAB.eye)
+    glyph(x + 3, by - 1, '.', crabEye)
+    glyph(x + 5, by - 1, '.', crabEye)
   }
 
   // 脚：睡着时收起来，只留蹲在沙面上的壳
@@ -1798,8 +1891,8 @@ function drawCrab() {
     // 节奏跟"走过的距离"走（crab.stride），不是跟时间走：站着不动脚就静止
     const stepping = Math.abs(crab.speed || 0) > 0.15
     const stepPhase = Math.floor(crab.stride || 0) % 2 === 0
-    glyph(x + 2, by + 1, stepping && stepPhase ? "'" : 'v', CRAB.leg)
-    glyph(x + 6, by + 1, stepping && !stepPhase ? "'" : 'v', CRAB.leg)
+    glyph(x + 2, by + 1, stepping && stepPhase ? "'" : 'v', crabLeg)
+    glyph(x + 6, by + 1, stepping && !stepPhase ? "'" : 'v', crabLeg)
   }
 }
 
@@ -1812,7 +1905,7 @@ function drawCrabGlow() {
   ctx.globalAlpha = 0.92
   ctx.shadowBlur = Math.max(4, layout.cellW * 1.15)
   for (const g of crabGlyphs) {
-    ctx.shadowColor = '#ff8a4a'
+    ctx.shadowColor = themeColor('crab', '#ff8a4a')
     ctx.fillStyle = g.color
     ctx.fillText(g.ch, layout.pad + g.c * layout.cellW + layout.cellW / 2, layout.pad + g.r * layout.cellH + layout.cellH / 2)
   }
@@ -1984,7 +2077,9 @@ function fishLookColor(f, i, len) {
 /** 一条鱼第 i 个字符用哪个颜色（compose 和发光层共用） */
 function fishCharColor(f, i, len) {
   if (f.scare > 0) return '#ffffff'
-  const c = fishLookColor(f, i, len)
+  let c = fishLookColor(f, i, len)
+  const tint = themeColor('fish', null)
+  if (tint) c = mixHex(c, tint, 0.45)
   // 饿了就掉一档色：往灰青里混，越低越明显（颜色本身不写回 f.color）
   const grey = HUNGER_GREY[hungerTier(f)]
   return grey > 0 ? mixHex(c, HUNGER_GREY_TO, grey) : c
@@ -2070,7 +2165,7 @@ function drawTankBackdrop() {
   ctx.closePath()
 
   const grad = ctx.createLinearGradient(0, waterTop, 0, bottom)
-  if (model.theme === 'dark') {
+  if (isDarkTheme()) {
     grad.addColorStop(0, 'rgba(8, 38, 45, 0.055)')
     grad.addColorStop(0.25, 'rgba(8, 38, 45, 0.11)')
     grad.addColorStop(0.6, 'rgba(7, 34, 42, 0.19)')
@@ -2088,18 +2183,98 @@ function drawTankBackdrop() {
   ctx.beginPath()
   ctx.moveTo(x, waterTop + 0.5)
   ctx.lineTo(right, waterTop + 0.5)
-  ctx.strokeStyle = model.theme === 'dark' ? 'rgba(130, 255, 244, 0.16)' : 'rgba(120, 255, 244, 0.08)'
+  ctx.strokeStyle = isDarkTheme() ? 'rgba(130, 255, 244, 0.16)' : 'rgba(120, 255, 244, 0.08)'
   ctx.lineWidth = 1
   ctx.stroke()
 }
 
 /**
  * 深色外壳：**不画在画布上**——画布保持透明，辉光才透得出气。
- * 底色交给 CSS 的 body.dark（见 style.css），
+ * 底色交给 CSS 的 body[data-theme]（见 style.css），
  * 效果就等于把这个透明鱼缸拖到一张深色页面上。
  */
 function applyTheme() {
-  document.body.classList.toggle('dark', model.theme === 'dark')
+  if (!THEMES[model.theme]) model.theme = 'clear'
+  const theme = THEMES[model.theme]
+  document.body.dataset.theme = model.theme
+  document.body.dataset.tone = isDarkTheme() ? 'dark' : 'light'
+  themeBackdropEl.style.backgroundColor = theme.shell?.background || 'transparent'
+  const setVar = (name, value) => {
+    if (value) document.body.style.setProperty(name, value)
+    else document.body.style.removeProperty(name)
+  }
+  const menu = theme.shell?.menu || {}
+  setVar('--menu-bg', menu.background ? `linear-gradient(180deg, ${menu.background}, ${menu.background})` : '')
+  setVar('--menu-border', menu.border)
+  setVar('--menu-text', menu.text)
+  setVar('--menu-accent', menu.accent)
+  setVar('--tag-border', theme.shell?.tag?.border)
+}
+
+function applyEffects() {
+  const valid = model.effects.filter((id) => EFFECTS[id])
+  model.effects = valid
+  document.body.dataset.effects = valid.join(' ')
+}
+
+const packThemeIds = new Set()
+let themePacksLoading = null
+
+function validThemeColor(value) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
+}
+
+function normalizeThemePack(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const id = String(raw.id || '').toLowerCase()
+  if (!/^[a-z0-9-]{2,24}$/.test(id) || THEMES[id]) return null
+  const label = typeof raw.label === 'string' ? raw.label.trim().slice(0, 16) : ''
+  if (!label) return null
+  const tone = raw.tone === 'dark' ? 'dark' : 'light'
+  const shell = raw.shell && typeof raw.shell === 'object' ? raw.shell : {}
+  const background = validThemeColor(shell.background) ? shell.background : null
+  const menuRaw = shell.menu && typeof shell.menu === 'object' ? shell.menu : {}
+  const tagRaw = shell.tag && typeof shell.tag === 'object' ? shell.tag : {}
+  const menu = {
+    background: validThemeColor(menuRaw.background) ? menuRaw.background : null,
+    border: validThemeColor(menuRaw.border) ? menuRaw.border : null,
+    text: validThemeColor(menuRaw.text) ? menuRaw.text : null,
+    accent: validThemeColor(menuRaw.accent) ? menuRaw.accent : null,
+  }
+  const tag = {
+    border: validThemeColor(tagRaw.border) ? tagRaw.border : null,
+  }
+  const palette = {}
+  for (const [kind, color] of Object.entries(raw.scene?.palette || {})) {
+    if (SCENE_KINDS[kind] && validThemeColor(color)) palette[kind] = color
+  }
+  return {
+    id,
+    label,
+    tone,
+    source: 'pack',
+    shell: { background, menu, tag },
+    scene: { palette },
+  }
+}
+
+async function loadThemePacks() {
+  if (!window.aq.listThemePacks) return
+  if (themePacksLoading) return themePacksLoading
+  themePacksLoading = (async () => {
+    const packs = await window.aq.listThemePacks().catch(() => [])
+    for (const id of packThemeIds) delete THEMES[id]
+    packThemeIds.clear()
+    for (const raw of Array.isArray(packs) ? packs : []) {
+      const theme = normalizeThemePack(raw)
+      if (!theme) continue
+      THEMES[theme.id] = theme
+      packThemeIds.add(theme.id)
+    }
+  })().finally(() => {
+    themePacksLoading = null
+  })
+  return themePacksLoading
 }
 
 function paint() {
@@ -2241,14 +2416,7 @@ const MENU_ITEMS = [
     ],
   },
   { sep: true },
-  {
-    row: '',
-    inline: true,
-    options: [
-      { act: 'theme', label: '深色' },
-      { act: 'frost', label: '磨砂' },
-    ],
-  },
+  { act: 'theme-menu', label: '主题设置' },
   { act: 'top', label: '总在最前', toggle: true },
   { sep: true },
   { act: 'manual', label: '用户手册' },
@@ -2281,6 +2449,7 @@ function buildMenu() {
         dot.dataset.act = opt.act
         dot.className = 'dot'
         dot.textContent = opt.label
+        if (opt.disabled) dot.disabled = true
         opts.appendChild(dot)
       }
       row.appendChild(opts)
@@ -2302,11 +2471,71 @@ function buildMenu() {
   refreshMenuState()
 }
 
+function buildThemeMenu() {
+  menuEl.textContent = ''
+  const back = document.createElement('button')
+  back.type = 'button'
+  back.dataset.act = 'back'
+  back.className = 'menu-back'
+  back.textContent = '← 返回'
+  menuEl.appendChild(back)
+
+  const list = document.createElement('div')
+  list.className = 'theme-list'
+
+  const themeHead = document.createElement('div')
+  themeHead.className = 'theme-section'
+  themeHead.textContent = '主题'
+  list.appendChild(themeHead)
+
+  for (const [id, theme] of Object.entries(THEMES)) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.dataset.act = 'theme:' + id
+    btn.className = 'theme-choice'
+    btn.textContent = theme.label
+    list.appendChild(btn)
+  }
+
+  const effectHead = document.createElement('div')
+  effectHead.className = 'theme-section'
+  effectHead.textContent = '效果'
+  list.appendChild(effectHead)
+
+  for (const [id, effect] of Object.entries(EFFECTS)) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.dataset.act = 'effect:' + id
+    btn.className = 'theme-choice'
+    btn.textContent = effect.label
+    list.appendChild(btn)
+  }
+
+  const frost = document.createElement('button')
+  frost.type = 'button'
+  frost.className = 'theme-choice'
+  frost.textContent = '磨砂'
+  frost.disabled = true
+  list.appendChild(frost)
+
+  const packs = document.createElement('button')
+  packs.type = 'button'
+  packs.className = 'theme-pack'
+  packs.dataset.act = 'themes-folder'
+  packs.textContent = '自定义主题'
+  list.appendChild(packs)
+
+  menuEl.appendChild(list)
+  refreshMenuState()
+}
+
 function refreshMenuState() {
   const nonClown = model.fish.filter((f) => f.temper !== 'clown').length
   for (const btn of menuEl.querySelectorAll('button')) {
     const act = btn.dataset.act
-    let on = (act === 'top' && model.alwaysOnTop) || (act === 'theme' && model.theme === 'dark')
+    let on = (act === 'top' && model.alwaysOnTop)
+    if (act.startsWith('theme:')) on = act === 'theme:' + model.theme
+    if (act.startsWith('effect:')) on = model.effects.includes(act.slice('effect:'.length))
     btn.classList.toggle('is-on', on)
     // 尺寸单选：当前档亮起来
     if (act.startsWith('size:')) {
@@ -2375,7 +2604,7 @@ function buildFishStatus() {
 }
 
 function updateFishStatusRow(f) {
-  // 列表 DOM 还在就更新；不要依赖 menuOpen——
+  // 列表 DOM 还在就更新；不要依赖菜单逻辑状态——
   // 点鱼缸喂食时菜单可能已逻辑关闭，但状态页仍可见。
   const row = menuEl.querySelector('.fish-status-row[data-fish-id="' + f.id + '"]')
   if (!row) return
@@ -2398,6 +2627,7 @@ let menuFrame = null
 const MENU_ROUTES = {
   main: { parent: null, build: buildMenu, className: '' },
   status: { parent: 'main', build: buildFishStatus, className: 'fish-status-page' },
+  theme: { parent: 'main', build: buildThemeMenu, className: 'theme-page' },
 }
 
 function menuPathFor(page) {
@@ -2446,6 +2676,7 @@ function renderMenuPage(page) {
   const route = MENU_ROUTES[page] || MENU_ROUTES.main
   const frame = ensureMenuFrame()
   menuEl.classList.toggle('fish-status-page', route.className === 'fish-status-page')
+  menuEl.classList.toggle('theme-page', route.className === 'theme-page')
   route.build()
   // 恢复旧版：主菜单量一次共享 frame，所有页面/鱼缸尺寸共用。
   // 鱼状态用固定 8 行网格在同一个高度里分配间距。
@@ -2460,9 +2691,15 @@ function renderMenuPage(page) {
 function showMenuRoute(page) {
   const target = MENU_ROUTES[page] ? page : 'main'
   menuStack = menuPathFor(target)
-  model.menuOpen = true
   menuEl.hidden = false
   renderMenuPage(target)
+  if (target === 'theme') {
+    loadThemePacks()
+      .then(() => {
+        if (isMenuPage('theme')) renderMenuPage('theme')
+      })
+      .catch(() => {})
+  }
 }
 
 function openMenuAt(px, py, page = 'main') {
@@ -2491,7 +2728,6 @@ function backMenu() {
 
 function closeMenu() {
   menuStack = []
-  model.menuOpen = false
   menuEl.hidden = true
 }
 
@@ -2549,6 +2785,14 @@ function runAction(act) {
     navigateMenu('status')
     return
   }
+  if (act === 'theme-menu') {
+    navigateMenu('theme')
+    return
+  }
+  if (act === 'themes-folder') {
+    window.aq.openThemesFolder()
+    return
+  }
   if (act === 'back') {
     backMenu()
     return
@@ -2591,14 +2835,23 @@ function runAction(act) {
     window.aq.setTop(model.alwaysOnTop)
     refreshMenuState()
     return
-  } else if (act === 'theme') {
-    model.theme = model.theme === 'dark' ? 'clear' : 'dark'
+  } else if (act.startsWith('theme:')) {
+    const id = act.slice('theme:'.length)
+    if (!THEMES[id]) return
+    model.theme = id
     applyTheme()
-    window.aq.setTheme(model.theme)
+    window.aq.setTheme(id)
     refreshMenuState()
     return
-  } else if (act === 'frost') {
-    // 磨砂功能暂未接入，保留菜单入口
+  } else if (act.startsWith('effect:')) {
+    const id = act.slice('effect:'.length)
+    if (!EFFECTS[id]) return
+    model.effects = model.effects.includes(id)
+      ? model.effects.filter((x) => x !== id)
+      : [...model.effects, id]
+    applyEffects()
+    window.aq.setEffects(model.effects)
+    refreshMenuState()
     return
   } else if (act.startsWith('size:')) {
     applySize(act.slice(5))
@@ -2670,8 +2923,8 @@ canvas.addEventListener('pointermove', (e) => {
   const vy = dy / layout.cellH / waterDt
   const speed = Math.hypot(vx, vy)
   const gain = waterGain(speed)
-  model.water.vx = clamp(model.water.vx - vx * 0.02 * gain, -WATER.maxX, WATER.maxX)
-  model.water.vy = clamp(model.water.vy - vy * 0.02 * gain, -WATER.maxY, WATER.maxY)
+  model.water.vx = clamp(model.water.vx - vx * WATER.drag * gain, -WATER.maxX, WATER.maxX)
+  model.water.vy = clamp(model.water.vy - vy * WATER.drag * gain, -WATER.maxY, WATER.maxY)
 })
 
 canvas.addEventListener('pointerleave', () => {
@@ -2702,8 +2955,8 @@ function endPointer(e, cancelled) {
       model.surfaceKick = Math.max(model.surfaceKick, WATER.surfaceKick)
     } else {
       const gain = waterGain(dragSpeed)
-      model.water.vx = clamp(model.water.vx - dragVx * 0.1 * gain, -WATER.maxX, WATER.maxX)
-      model.water.vy = clamp(model.water.vy - dragVy * 0.1 * gain, -WATER.maxY, WATER.maxY)
+      model.water.vx = clamp(model.water.vx - dragVx * WATER.release * gain, -WATER.maxX, WATER.maxX)
+      model.water.vy = clamp(model.water.vy - dragVy * WATER.release * gain, -WATER.maxY, WATER.maxY)
     }
     model.stats.dragEnds++
     window.aq.dragEnd()
@@ -2796,10 +3049,20 @@ function startAutosave() {
 
 async function init() {
   const boot = await window.aq.load()
+  await loadThemePacks()
   layout = { ...layout, ...boot.layout }
   model.sizeName = boot.state.size || 'medium'
-  model.theme = boot.state.theme === 'dark' ? 'dark' : 'clear'
+  model.theme = THEMES[boot.state.theme] ? boot.state.theme : 'clear'
+  model.effects = Array.isArray(boot.state.effects)
+    ? boot.state.effects.filter((id) => EFFECTS[id])
+    : []
+  // 旧版 scanline 是主题，迁移成「深色 + 扫描线效果」
+  if (boot.state.theme === 'scanline') {
+    model.theme = 'dark'
+    if (!model.effects.includes('scanline')) model.effects.push('scanline')
+  }
   applyTheme()
+  applyEffects()
   model.alwaysOnTop = boot.state.alwaysOnTop !== false
 
   // 离线也照常会饿：按存档时间补算衰减
@@ -2870,8 +3133,7 @@ async function init() {
     setSize: (name) => applySize(name),
     addFish: () => addFish(),
     runAction: (act) => runAction(act),
-    /** 自检用：按固定步长推进 n 帧，不依赖 wall clock（窗口被遮挡时 rAF 会被节流） */
-    stepSim: (n, dt) => {
+    /** 自检用：按固定步长推进 n 帧，不依赖 wall clock（窗口被遮挡时 rAF 会被节流） */    stepSim: (n, dt) => {
       const d = dt || 1 / 15
       for (let i = 0; i < n; i++) step(d)
       return n
@@ -2882,12 +3144,20 @@ async function init() {
     fishColor: (i) => fishCharColor(model.fish[i], 0, model.fish[i].body.length),
     hearts: () => model.hearts.length,
     willEat: (f, id) => wantsPellet(f, { id }),
-    runAction: (act) => runAction(act),
     hungerTier: () => hungerTier(),
     repaint: () => paint(),
     closeMenu,
-    model,
-    layout: () => layout,
+    menuOpen: () => isMenuOpen(),
+    setTheme: (id) => {
+      if (!THEMES[id]) return
+      model.theme = id
+      applyTheme()
+    },
+    setEffects: (ids) => {
+      model.effects = Array.isArray(ids) ? ids.filter((id) => EFFECTS[id]) : []
+      applyEffects()
+    },
+    model,    layout: () => layout,
     dump: () => {
       const lines = []
       for (let r = 0; r < ROWS; r++) lines.push(bufCh.slice(r * COLS, (r + 1) * COLS).join(''))
