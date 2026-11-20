@@ -102,11 +102,13 @@ rem 摊开的中间目录不留在磁盘上（只留 zip）
 rmdir /s /q "%PKG%"
 
 rem 本地存档：dist 只留当前版本。
-rem 同一 x.y 的补丁更新是 z 级：旧 zip 直接删，不进 history。
-rem 只有换了 x.y（y/x 级）才把旧版本挪进 history。
-if not exist "%DIST%\history" mkdir "%DIST%\history"
-powershell -NoProfile -Command ^
-  "$cur='%VER%'; $cp=$cur.Split('.'); Get-ChildItem '%DIST%\CyberAquarium-v*-portable.zip' | Where-Object { $_.Name -ne ('CyberAquarium-v'+$cur+'-portable.zip') } | ForEach-Object { if ($_.Name -match '^CyberAquarium-v(.+)-portable\.zip$') { $p=$matches[1].Split('.'); if ($p[0] -eq $cp[0] -and $p[1] -eq $cp[1]) { Remove-Item $_.FullName -Force } else { Move-Item $_.FullName (Join-Path '%DIST%\history' $_.Name) -Force } } }"
+rem 同 x.y 的 z 更新删除旧 portable/setup；换 x.y 时两者一起进 history\vX.Y.Z\。
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\archive-dist.ps1" -Version "%VER%"
+if errorlevel 1 (
+  echo ARCHIVE FAILED
+  pause
+  exit /b 1
+)
 
 for %%F in ("%OUT%") do echo done: %%~zF bytes  ^-^>  %%~fF
 rem 从资源管理器双击时停下来看结果；带参数调用（脚本/CI）就不停
