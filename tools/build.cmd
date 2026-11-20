@@ -60,6 +60,10 @@ del /f /q "%PKG%\runtime\electron_wer.dll" 2>nul
 echo [3/5] app ...
 robocopy "%ROOT%\app" "%PKG%\app" /E /PURGE /NFL /NDL /NJH /NJS /NP >nul
 
+echo [3b/5] plugins ...
+mkdir "%PKG%\plugins" 2>nul
+robocopy "%ROOT%\plugins" "%PKG%\plugins" /E /NFL /NDL /NJH /NJS /NP >nul
+
 echo [4/5] launcher + docs ...
 rem 重新编译启动器，把版本号写进文件属性（右键 - 属性 - 详细信息能看到）
 set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"

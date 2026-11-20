@@ -4,15 +4,15 @@
 
 ![赛博鱼缸](shots/aquarium.png)
 
-`v1.2.2` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [用户手册](用户手册.html)
+`v1.3.0` · MIT · Windows 10/11 x64 · [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases) · [用户手册](用户手册.html)
 
-1.2 以鱼为本：每条鱼有自己的 SAT；底栏 `SAT AVG` 是整缸平均；右击鱼看单条标签，点 SAT AVG 看整缸状态。
+1.3 主题与效果：主题决定外壳和调色板，扫描线等效果可独立叠加；主题包放在游戏目录的 `plugins/themes`。
 
 ## 下载与上手
 
 > 不想看代码，只想养鱼：按下面四步走。
 
-1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.2.2-setup.exe`（安装版）或 `CyberAquarium-v1.2.2-portable.zip`（便携版）。
+1. 打开 [Releases](https://github.com/PanXingcheng01/cyber-aquarium/releases)，在 **Assets** 里下载 `CyberAquarium-v1.3.0-setup.exe`（安装版）或 `CyberAquarium-v1.3.0-portable.zip`（便携版）。
    - **不要下 `Source code`**，那是源码快照，不能直接玩。
 2. 解压到**纯英文路径**，例如 `D:\CyberAquarium`。
    - 路径里只要有中文（或其它非英文字符），Electron 会直接崩溃；启动器会先弹窗提醒。
@@ -243,6 +243,26 @@ IPC 通道：
 | 菜单项 | 11 组（`MENU_ITEMS`，尺寸行展开为 3 个按钮，DOM 共 13 个） |
 
 ## 更新历史
+
+### 1.3 系列 · 主题与效果
+
+<blockquote>
+
+<details>
+<summary><strong>v1.3.0</strong> · 主题与效果拆分、主题包</summary>
+
+- 主题与效果拆成两套独立状态：主题决定外壳、菜单、标签和实体默认调色板；效果可叠加在任意主题上。
+- 扫描线改为独立效果，再也不是一个主题；透明/深色主题都可以开启或关闭扫描线。
+- 官方透明/深色主题也改用 `shell` token，菜单底色、边框、文字、强调色和鱼头标签边框统一走主题数据。
+- 主题背景和扫描线效果层按鱼缸边框的 9px 圆角裁切，不再露出矩形外框。
+- 新增主题包系统：`plugins/themes/*.json`，主题包条目自动出现在「主题设置」子菜单。
+- 主题菜单增加「自定义主题」入口，直接打开 `plugins/themes`；模板和说明也收在该目录内。
+- 会动实体统一进 `SCENE_KINDS` 表：鱼、螃蟹、水草、气泡、鱼食、沙尘、沙粒、爱心都可被主题调色板覆盖；以后新增生物只加一项。
+- 主题包不执行脚本，只允许颜色、菜单/标签 token 和内置实体调色板字段。
+
+</details>
+
+</blockquote>
 
 ### 1.2 系列 · 以鱼为本
 
