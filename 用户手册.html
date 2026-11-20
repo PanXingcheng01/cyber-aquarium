@@ -52,7 +52,7 @@
   <h1>赛博鱼缸</h1>
   <p class="lead">一个飘在桌面上的字条鱼缸。鱼、水草、小螃蟹全是字符画的，会自己游、自己饿、自己睡觉。1.3 开始，主题和效果可以分开选择，主题包放在 plugins/themes。</p>
 
-<div class="tip"><strong>1.3 · 主题与效果</strong>：底栏的 <code>SAT AVG</code> 是整缸平均；右击鱼看单条标签；点 SAT AVG 或菜单第一项打开「查看鱼状态」。</div>
+<div class="tip"><strong>1.3 · 水流与外观</strong>：拖窗口会在鱼缸里带出一股水流；右键 →「主题设置」选主题和效果。</div>
 </header>
 
 <figure class="hero">
@@ -72,6 +72,7 @@
     <li><a href="#bump">它们也会拌嘴</a></li>
     <li><a href="#crab">沙面上那只螃蟹</a></li>
     <li><a href="#menu">右键菜单</a></li>
+    <li><a href="#theme">主题、效果和自定义</a></li>
     <li><a href="#save">存档和常见问题</a></li>
   </ol>
 </div>
@@ -83,7 +84,7 @@
   <li>想有桌面图标：右键这个 exe → <strong>发送到 → 桌面快捷方式</strong>（图标是小丑鱼，不用自己设置）</li>
   <li>想开机自动出现：<code>Win+R</code> 输入 <code>shell:startup</code>，把那个快捷方式拖进去</li>
 </ol>
-<div class="tip">拖鱼缸的<strong>透明区域</strong>可以挪位置，拖鱼本身是互动。位置、大小、外壳颜色、饱食度都会记住。</div>
+<div class="tip">拖鱼缸的<strong>透明区域</strong>可以挪位置，拖鱼本身是互动。位置、尺寸、主题/效果、饱食度都会记住。</div>
 
 <h2 id="play">2 · 怎么玩</h2>
 <table>
@@ -93,10 +94,10 @@
   <tr><td>鼠标停在鱼身上不动</td><td><strong>摸它</strong>：鱼会停下来，头顶冒小爱心</td></tr>
   <tr><td>点螃蟹</td><td>它<strong>夹你一下</strong>，然后横着跑开；如果被吓到，它通常会趁机换一行躲开</td></tr>
   <tr><td>不看它的时候</td><td>鱼缸关掉也会继续消耗，但速度约为开着的 1/10，不会一晚上回来全饿死</td></tr>
-  <tr><td>拖透明的地方</td><td>挪动整个鱼缸</td></tr>
+  <tr><td>拖透明的地方</td><td>挪动整个鱼缸；拖得快会在水里带出一股水流，鱼、螃蟹、水草、气泡和鱼食都会跟着晃，强水流会叫醒睡着的生物</td></tr>
   <tr><td>右击鱼</td><td>浮出 <code>01 SAT xx%</code> 跟随标签，4 秒后消失；再右击关闭</td></tr>
   <tr><td>点底栏 SAT AVG</td><td>打开「查看鱼状态」</td></tr>
-  <tr><td>右键空白</td><td>弹菜单（撒食、加/捞鱼、换水、换布景、尺寸、深色模式、置顶、退出）</td></tr>
+  <tr><td>右键空白</td><td>弹菜单（撒食、加/捞鱼、换水、换布景、尺寸、主题设置、置顶、退出）</td></tr>
 </table>
 <div class="tip">喂食用的是<strong>点水面</strong>，不是点鱼。点鱼只会把它吓跑。</div>
 
@@ -209,7 +210,7 @@
   <tr><td>换一缸清水</td><td>鱼食和气泡清掉；<strong>鱼被"倒"回缸里</strong>——从水面一处咣当倒下来，落地后四散冲开（兴奋四五秒），螃蟹被扔到沙面另一头走几步；水草被水冲一下，水面波纹从落点荡向两边</td></tr>
   <tr><td>换一缸水草</td><td>等于换水 + 动土换景：鱼同样被倒进来散开；新草<strong>插定就不晃</strong>；<strong>沙面重新铺过（纹理、石子位置都变）</strong>；新草冒 6~10 秒珍珠泡</td></tr>
   <tr><td>尺寸（小 / 中 / 大）</td><td>一排单选，点哪个换哪个，当前档是实心圆点</td></tr>
-  <tr><td>深色模式</td><td>给鱼缸加一层深色底（浅色桌面上更好看），开着时打勾</td></tr>
+  <tr><td>主题设置</td><td>选透明/深色；效果里单独开关扫描线。菜单、鱼标签和爱心会跟着主题换配色</td></tr>
   <tr><td>总在最前</td><td>钉在所有窗口上面，或者沉到桌面一层</td></tr>
   <tr><td>用户手册</td><td>用浏览器打开这份用户手册（放哪都能打开）</td></tr>
   <tr><td>退出</td><td>关掉它（会先把位置和状态存好）</td></tr>
@@ -217,8 +218,18 @@
 
 <p class="kv">菜单是半透明的，能看见背后的鱼。小尺寸下菜单会自动收紧行高（窗口实在装不下时菜单内部还能滚动），不会把「退出」挡在窗口外面。</p>
 
-<h2 id="save">10 · 存档和常见问题</h2>
-<p>位置、尺寸、外壳、每条鱼的 SAT，以及每条鱼的种类/颜色/睡姿、水草和沙面纹理都存在这里。鱼缸关掉后也会继续消耗，但只有开着的约 1/10。</p>
+<h2 id="theme">10 · 主题、效果和自定义</h2>
+<p>右键 →「主题设置」。菜单分两段：<strong>主题</strong>决定外壳、菜单、鱼标签和爱心的配色；<strong>效果</strong>可以叠在任何主题上。</p>
+<table>
+  <tr><th>选什么</th><th>会怎样</th></tr>
+  <tr><td>透明 / 深色</td><td>透明让桌面直接透出来；深色是半透明底，浅色桌面上更好看。换主题不会动鱼和存档。</td></tr>
+  <tr><td>扫描线</td><td>CRT 扫描线、暗角、RGB 边缘和一条慢慢下移的刷新带；它是独立效果，可以在任意主题上开关。</td></tr>
+  <tr><td>自定义主题</td><td>点「自定义主题」会打开 <code>plugins\themes\</code>。把主题 JSON 放进去，重新进主题菜单就能看到。</td></tr>
+</table>
+<p class="kv">模板在 <code>plugins\themes\templates\theme.json</code>，不会被当成主题加载。主题包只改颜色和外观数据，不执行脚本；菜单、标签、爱心和鱼缸底色会一起变。</p>
+
+<h2 id="save">11 · 存档和常见问题</h2>
+<p>位置、尺寸、主题/效果、每条鱼的 SAT，以及每条鱼的种类/颜色/睡姿、水草和沙面纹理都存在这里。鱼缸关掉后也会继续消耗，但只有开着的约 1/10。</p>
 <p><code>%APPDATA%\cyber-aquarium\state.json</code></p>
 <p class="kv">找法：按 <code>Win+R</code>，输入 <code>%APPDATA%\cyber-aquarium</code> 回车；或在资源管理器地址栏粘贴这一行。完整示例：<code>C:\Users\你的用户名\AppData\Roaming\cyber-aquarium\state.json</code>。</p>
 <p class="kv">想把它恢复成刚装好的样子：先退出鱼缸，删掉这个文件，再打开。</p>
@@ -229,7 +240,7 @@
   <tr><td>提示路径里有中文</td><td>把整个文件夹搬到纯英文路径（例如 <code>D:\CyberAquarium</code>）</td></tr>
   <tr><td>杀毒软件报警</td><td>是 Electron 的通用误报，允许即可</td></tr>
   <tr><td>桌面上看不见它</td><td>可能被挪到屏幕外了：删掉 <code>state.json</code> 再打开</td></tr>
-  <tr><td>更新版本</td><td>解压新包，覆盖 <code>app\</code>、<code>启动赛博鱼缸.exe</code>、<code>快速上手.txt</code>、<code>用户手册.html</code>；<code>runtime\</code> 没换 Electron 可保留；存档不受影响</td></tr>
+  <tr><td>更新版本</td><td>解压新包，覆盖 <code>app\</code>、<code>启动赛博鱼缸.exe</code>、<code>快速上手.txt</code>、<code>用户手册.html</code>；<code>runtime\</code> 没换 Electron 可保留；新包不含用户主题，<code>plugins\themes\</code> 里的自定义主题会保留，别删整个 <code>plugins</code> 文件夹；存档不受影响</td></tr>
 </table>
 
 <footer>

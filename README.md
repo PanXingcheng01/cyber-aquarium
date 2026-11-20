@@ -20,7 +20,7 @@
    - 第一次启动 SAT 只有 4%，右键 →「撒一把鱼食」；想从头养就删掉 `%APPDATA%\cyber-aquarium\state.json`。
 4. 玩法看包里的 **`用户手册.html`**（图文、带目录，双击即开）和 **`快速上手.txt`**（一页纸 / FAQ）。
 
-> 更新已有安装：覆盖 `app/`、`启动赛博鱼缸.exe`、`快速上手.txt`、`用户手册.html`；`runtime/` 没换 Electron 时可以保留。存档在 `%APPDATA%\cyber-aquarium`，不会被覆盖。
+> 更新已有安装：覆盖 `app/`、`启动赛博鱼缸.exe`、`快速上手.txt`、`用户手册.html`；`runtime/` 没换 Electron 时可以保留。`plugins/themes` 里玩家自己添加的主题不会被新包覆盖；不要删除整个 `plugins` 文件夹。存档在 `%APPDATA%\cyber-aquarium`，不会被覆盖。
 
 系统要求：Windows 10 / 11（64 位）；不用装 Node、不用联网、不需要管理员权限。程序没有数字签名，首次运行 SmartScreen 提示时选「更多信息 → 仍要运行」。
 

@@ -61,8 +61,21 @@ echo [3/5] app ...
 robocopy "%ROOT%\app" "%PKG%\app" /E /PURGE /NFL /NDL /NJH /NJS /NP >nul
 
 echo [3b/5] plugins ...
-mkdir "%PKG%\plugins" 2>nul
-robocopy "%ROOT%\plugins" "%PKG%\plugins" /E /NFL /NDL /NJH /NJS /NP >nul
+rem 只打包插件支持文件：README + 主题模板。
+rem 不打包 .gitkeep，也不打包 themes 根目录的用户主题 JSON。
+if not exist "%ROOT%\plugins\README.md" goto pluginsmissing
+if not exist "%ROOT%\plugins\themes\README.md" goto pluginsmissing
+if not exist "%ROOT%\plugins\themes\templates\theme.json" goto pluginsmissing
+mkdir "%PKG%\plugins\themes\templates" 2>nul
+copy /y "%ROOT%\plugins\README.md" "%PKG%\plugins\" >nul
+copy /y "%ROOT%\plugins\themes\README.md" "%PKG%\plugins\themes\" >nul
+copy /y "%ROOT%\plugins\themes\templates\theme.json" "%PKG%\plugins\themes\templates\" >nul
+goto pluginsdone
+:pluginsmissing
+echo PLUGIN SUPPORT FILES MISSING
+pause
+exit /b 1
+:pluginsdone
 
 echo [4/5] launcher + docs ...
 rem 重新编译启动器，把版本号写进文件属性（右键 - 属性 - 详细信息能看到）
